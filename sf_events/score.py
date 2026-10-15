@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 SIGNALS: list[tuple[str, int, str]] = [
     # "win" and "cash" alone fire on cash bars and winning smiles, keep it to prize words
     ("cash prizes", 30, r"prizes?\b|prize pool|cash prize|\bawards?\b|\bgrants?\b|\bbounty|winners?\b|\bcompete\b"),
-    ("investors", 20, r"investors?\b|\bvcs?\b|venture|angels?\b|\bfunds?\b|fundrais|\bLPs?\b|general partners?\b|check ?size"),
+    # no "fundraiser": that is a bake sale, not a round
+    ("investors", 20, r"investors?\b|\bvcs?\b|venture|angels?\b|\bfunds?\b|\bLPs?\b|general partners?\b|check ?size"),
     ("founders", 12, r"founders?\b|co-?founders?\b|\bceos?\b|startups?\b|\byc\b|y combinator"),
     ("hiring", 10, r"hiring|recruit|\bcareers?\b|job fair|\btalent\b|\bjobs?\b"),
     ("exclusive", 8, r"invite[- ]only|\bvip\b|\bexclusive|intimate|curated|approval required|\bdinner\b|12-person|\bsalon\b"),

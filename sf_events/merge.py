@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 from sf_events.models import Event
 
 # more authoritative first
-PREFER = ("luma", "cerebralvalley")
+PREFER = ("luma", "partiful", "cerebralvalley")
 
 
 def dedupe_key(e: Event) -> str:
@@ -22,6 +22,9 @@ def dedupe_key(e: Event) -> str:
     path = u.path.strip("/")
     if host in ("luma.com", "lu.ma"):
         return f"luma:{path.lower()}"
+    if host == "partiful.com" and path.startswith("e/"):
+        # partiful ids are case sensitive and the path is the id
+        return f"partiful:{path[2:]}"
     return f"{host}/{path.lower()}"
 
 

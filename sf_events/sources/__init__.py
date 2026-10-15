@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Optional
 
 from sf_events.models import Event
-from sf_events.sources import cerebralvalley, luma
+from sf_events.sources import cerebralvalley, luma, partiful
 
 
 @dataclass(frozen=True)
@@ -28,5 +28,7 @@ SOURCES: dict[str, Source] = {
     for s in (
         Source("cerebralvalley", cerebralvalley.fetch, timedelta(minutes=30)),
         Source("luma", luma.fetch, timedelta(hours=1), enrich=luma.enrich),
+        # one curated page, changes slowly
+        Source("partiful", partiful.fetch, timedelta(hours=2)),
     )
 }

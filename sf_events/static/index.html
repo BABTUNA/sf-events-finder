@@ -25,6 +25,8 @@
     --luma-soft: rgba(194, 53, 122, 0.12);
     --cv: #1f6fb8;
     --cv-soft: rgba(31, 111, 184, 0.12);
+    --partiful: #6b4fd8;
+    --partiful-soft: rgba(107, 79, 216, 0.14);
     --display: "Barlow Condensed", "Arial Narrow", sans-serif;
     --body: "IBM Plex Sans", system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -43,12 +45,14 @@
       --live: #4ccc7f;
       --luma: #f06aa8; --luma-soft: rgba(240, 106, 168, 0.16);
       --cv: #6db3f2; --cv-soft: rgba(109, 179, 242, 0.16);
+      --partiful: #a894ff; --partiful-soft: rgba(168, 148, 255, 0.16);
     }
   }
   :root[data-theme="dark"] {
     --fog: #0f161d; --fog-2: #182129; --card: #141d25; --ink: #e7ecf0; --ink-2: #a6b2bd;
     --ink-3: #6b7884; --rule: #2a3640; --bridge: #ef5a30; --bridge-soft: rgba(239, 90, 48, 0.16); --live: #4ccc7f;
     --luma: #f06aa8; --luma-soft: rgba(240, 106, 168, 0.16); --cv: #6db3f2; --cv-soft: rgba(109, 179, 242, 0.16);
+    --partiful: #a894ff; --partiful-soft: rgba(168, 148, 255, 0.16);
   }
 
   * { box-sizing: border-box; }
@@ -133,6 +137,9 @@
   #topics .chip[aria-pressed="true"] .n { color: var(--fog); }
   .ev.src-luma .t { border-right-color: var(--luma); }
   .ev.src-cerebralvalley .t { border-right-color: var(--cv); }
+  .ev.src-partiful .t { border-right-color: var(--partiful); }
+  .pill.partiful { color: var(--partiful); background: var(--partiful-soft); }
+  #srcfilter button.is-partiful[aria-pressed="true"] { background: var(--partiful); color: #fff; }
   .ev.live .t { border-right-color: var(--live); }
   .pill { display: inline-block; font: 600 9px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 6px; border-radius: 3px; }
   .pill.luma { color: var(--luma); background: var(--luma-soft); }
@@ -230,9 +237,10 @@
     <div class="sources" id="sources" aria-label="Sources"></div>
     <input class="search" id="q" type="search" placeholder="Search names, places, hosts, summaries" aria-label="Search events" autocomplete="off">
     <div class="seg" id="srcfilter" role="group" aria-label="Source">
-      <button data-src="" aria-pressed="true">both</button>
+      <button data-src="" aria-pressed="true">all</button>
       <button data-src="luma" aria-pressed="false" class="is-luma">luma</button>
       <button data-src="cerebralvalley" aria-pressed="false" class="is-cv">cerebral valley</button>
+      <button data-src="partiful" aria-pressed="false" class="is-partiful">partiful</button>
     </div>
     <div class="seg" id="sort" role="group" aria-label="Order">
       <button data-sort="time" aria-pressed="true">by time</button>
@@ -267,6 +275,11 @@
   const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, events: [], sources: [] };
   const $ = (s) => document.querySelector(s);
   let FORMATS = [], TOPICS = [];
+  const PILL = {
+    luma: { cls: "luma", label: "luma", name: "Luma" },
+    cerebralvalley: { cls: "cv", label: "cv", name: "Cerebral Valley" },
+    partiful: { cls: "partiful", label: "partiful", name: "Partiful" },
+  };
 
   // ymd in pacific so grouping matches what the cli prints
   const ymd = (iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
@@ -387,7 +400,7 @@
           return `<a class="ev ${live ? "live" : ""} src-${e.source}" href="${e.url}" target="_blank" rel="noopener">
             <span class="t">${state.sort === "score" ? `<span class="tday">${fmt(e.start, { weekday: "short", day: "numeric" })}</span>` : ""}${fmt(e.start, { hour: "numeric", minute: "2-digit" })}${live ? '<span class="live-dot">LIVE</span>' : ""}</span>
             <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}</span>
-            <span class="host"><span class="pills"><span class="score ${e.score >= 40 ? "high" : e.score >= 20 ? "mid" : ""}" title="how worth it this looks, 0 to 100">${e.score}</span>${srcs.map((s) => `<span class="pill ${s === "luma" ? "luma" : "cv"}" title="Listed by ${s === "luma" ? "Luma" : "Cerebral Valley"}">${s === "luma" ? "luma" : "cv"}</span>`).join("")}</span><span class="dom">${esc(host(e.url))}</span></span>
+            <span class="host"><span class="pills"><span class="score ${e.score >= 40 ? "high" : e.score >= 20 ? "mid" : ""}" title="how worth it this looks, 0 to 100">${e.score}</span>${srcs.map((s) => `<span class="pill ${PILL[s]?.cls || "cv"}" title="Listed by ${PILL[s]?.name || s}">${PILL[s]?.label || s}</span>`).join("")}</span><span class="dom">${esc(host(e.url))}</span></span>
             <span class="sub"><span class="where">${esc(e.where || "")}${e.host ? `<span class="host-name"> · ${esc(e.host)}</span>` : ""}</span>${e.summary ? `<span class="sum">${esc(e.summary)}</span>` : ""}
               <span class="tags">${[e.format === "other" ? "" : e.format, ...e.topics].filter(Boolean).map((t) => `<span>#${esc(t)}</span>`).join("")}</span>
               ${e.score_reasons.length ? `<span class="why"><b>${e.score}</b> · ${esc(e.score_reasons.join(", "))}</span>` : ""}</span>

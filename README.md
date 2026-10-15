@@ -1,6 +1,6 @@
 # sf-events-finder
 
-One list of upcoming AI and tech events in the SF Bay Area. Cerebral Valley and Luma today, X next. Everything defaults to the Bay Area because that is the only place I am looking.
+One list of upcoming AI and tech events in the SF Bay Area. Cerebral Valley, Luma and Partiful today, X next. Everything defaults to the Bay Area because that is the only place I am looking.
 
 ```bash
 uv sync
@@ -32,7 +32,7 @@ Thu Oct 15
 uv run sf-events-web      # http://127.0.0.1:8765
 ```
 
-One page, same data. Pick a source (both, Luma, Cerebral Valley), a range (7, 14, 30 days or everything), click format and topic chips to narrow. Chip counts show what each click would leave. Every row carries a pill per source that lists it, pink for Luma and blue for Cerebral Valley, and the time column stripe matches. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. The header shows each source with its count and last pull, and the ↻ button rescrapes it right now.
+One page, same data. Pick a source (all, Luma, Cerebral Valley, Partiful), a range (7, 14, 30 days or everything), click format and topic chips to narrow. Chip counts show what each click would leave. Every row carries a pill per source that lists it, pink for Luma, blue for Cerebral Valley, purple for Partiful, and the time column stripe matches. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. The header shows each source with its count and last pull, and the ↻ button rescrapes it right now.
 
 ![web ui](docs/web.png)
 
@@ -82,6 +82,8 @@ GET https://api.luma.com/discover/get-paginated-events?west=-122.7&east=-121.7&s
 ```
 
 About 1,200 upcoming events, 50 per page, no auth. Entries carry no description, so a second pass fetches `GET https://api.luma.com/url?url=<slug>` for events starting in the next two weeks and keeps the description (clipped to a short summary) and Luma's own category tags, which show up as topics (`ai`, `tech`, `arts & culture`). That endpoint allows about 70 calls before a 429 and then blocks for around five minutes, so each pass fetches at most 60, soonest events first, and stops at the first 429. Rows already in the store keep their summary, so each event costs one detail call ever. The pass runs as its own job every 6 minutes (`sf-events enrich`, or the web server's scheduler), so the two-week window fills in within about an hour of a fresh start. Roughly a quarter of the Luma events Cerebral Valley lists are not marked discoverable and never appear here, which is why both sources stay. See [sf_events/sources/luma.py](sf_events/sources/luma.py).
+
+**partiful** `partiful.com/events` wants a login, but `partiful.com/explore/sf` is a public server-rendered page with every curated Bay Area event embedded in its `__NEXT_DATA__`: a trending carousel, themed sections, a short feed. About 75 events, no pagination, and the category params return the same set. The section an event sits in becomes its tags. Mostly social, so the score sorts it out. See [sf_events/sources/partiful.py](sf_events/sources/partiful.py).
 
 **cerebralvalley** The events page is a Next.js app that fills itself from a public JSON API, so the scraper calls that instead of parsing HTML:
 

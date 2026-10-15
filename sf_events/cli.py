@@ -144,7 +144,7 @@ def print_table(events: list[Event], by_day: bool = True) -> None:
     print(f"\n{len(events)} events")
 
 
-SHORT = {"cerebralvalley": "cv", "luma": "luma"}
+SHORT = {"cerebralvalley": "cv", "luma": "luma", "partiful": "pf"}
 
 
 def source_label(e: Event) -> str:
