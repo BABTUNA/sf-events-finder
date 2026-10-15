@@ -16,6 +16,7 @@ and transport errors retry. about a quarter of the luma events cerebral valley
 lists are not marked discoverable and never show up here, keep both sources
 """
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -116,9 +117,13 @@ def _ts(s: str) -> datetime:
 DETAIL_API = "https://api.luma.com/url"
 # how far ahead to bother fetching a description for
 DETAIL_WINDOW = timedelta(days=14)
-# the detail endpoint 429s fast, a few workers with a real backoff beats many
-DETAIL_WORKERS = 3
-DETAIL_RETRIES = 5
+# the detail endpoint allows roughly 70 calls before a 429, and the block then
+# lasts about five minutes. each run takes a bite under that, soonest events
+# first, and stops at the first 429 anyway. the hourly job carries enriched
+# rows over, so the two-week window fills in across runs
+DETAIL_WORKERS = 2
+DETAIL_BUDGET = 60
+DETAIL_RETRIES = 3
 SUMMARY_CHARS = 400
 
 
@@ -142,11 +147,15 @@ def enrich(events: list[Event], known: dict[str, Event], *, now: datetime | None
             todo.append(i)
     if not todo:
         return out
+    todo.sort(key=lambda i: events[i].start)
+    todo = todo[:DETAIL_BUDGET]
     own = client is None
     client = client or httpx.Client(timeout=httpx.Timeout(30, connect=15), headers={"User-Agent": "Mozilla/5.0"})
+    # shared between workers: once luma says stop, everyone stops
+    limited = threading.Event()
     try:
         with ThreadPoolExecutor(DETAIL_WORKERS) as pool:
-            for i, detail in zip(todo, pool.map(lambda i: _detail(client, events[i]), todo)):
+            for i, detail in zip(todo, pool.map(lambda i: _detail(client, events[i], limited), todo)):
                 if detail:
                     out[i] = replace(events[i], **detail)
     finally:
@@ -155,9 +164,11 @@ def enrich(events: list[Event], known: dict[str, Event], *, now: datetime | None
     return out
 
 
-def _detail(client: httpx.Client, e: Event) -> dict | None:
+def _detail(client: httpx.Client, e: Event, limited: threading.Event) -> dict | None:
     """one event's description and tags, or None. never raises: a miss here
     just leaves the row without a summary until the next run"""
+    if limited.is_set():
+        return None
     slug = e.url.rsplit("/", 1)[-1]
     for attempt in range(DETAIL_RETRIES):
         try:
@@ -170,10 +181,12 @@ def _detail(client: httpx.Client, e: Event) -> dict | None:
                 return parse_detail(r.json())
             except (ValueError, KeyError, TypeError):
                 return None
-        if r.status_code == 429 or r.status_code >= 500:
-            # honour retry-after when given, otherwise back off hard: 5, 10, 20, 40s
-            wait = float(r.headers.get("retry-after") or 0) or 5 * 2**attempt
-            time.sleep(min(wait, 60))
+        if r.status_code == 429:
+            # the block lasts minutes, retrying only extends it. give up for this run
+            limited.set()
+            return None
+        if r.status_code >= 500:
+            time.sleep(2 * (attempt + 1))
             continue
         return None
     return None

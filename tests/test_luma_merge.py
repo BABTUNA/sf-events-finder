@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -122,3 +122,39 @@ def test_enrich_only_near_events_and_reuses_known(monkeypatch):
     assert out["https://luma.com/far"].summary is None
     # source tags show up as topics
     assert "ai" in out["https://luma.com/soon"].topics
+
+
+def test_enrich_stops_at_first_rate_limit(monkeypatch):
+    detail = json.loads(DETAIL.read_text())
+    now = datetime(2026, 10, 15, tzinfo=timezone.utc)
+    evs = [ev("luma", f"https://luma.com/e{i}", start=now + timedelta(hours=i)) for i in range(6)]
+    hit = []
+
+    def handler(request):
+        hit.append(request.url.params["url"])
+        # first call is fine, the second trips the limit
+        return httpx.Response(200, json=detail) if len(hit) == 1 else httpx.Response(429, json={"code": "api/rate-limit"})
+
+    monkeypatch.setattr(luma, "DETAIL_WORKERS", 1)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    out = luma.enrich(evs, {}, now=now, client=client)
+    # one enriched, then the pass stopped instead of hammering the other four
+    assert sum(1 for e in out if e.summary) == 1
+    assert hit == ["e0", "e1"]
+
+
+def test_enrich_budget_takes_soonest_first():
+    now = datetime(2026, 10, 15, tzinfo=timezone.utc)
+    detail = json.loads(DETAIL.read_text())
+    # out of order on purpose
+    evs = [ev("luma", f"https://luma.com/e{i}", start=now + timedelta(days=d)) for i, d in enumerate([5, 1, 3])]
+    hit = []
+    client = httpx.Client(transport=httpx.MockTransport(lambda r: (hit.append(r.url.params["url"]), httpx.Response(200, json=detail))[1]))
+    import sf_events.sources.luma as mod
+    old = mod.DETAIL_BUDGET
+    mod.DETAIL_BUDGET = 2
+    try:
+        luma.enrich(evs, {}, now=now, client=client)
+    finally:
+        mod.DETAIL_BUDGET = old
+    assert hit == ["e1", "e2"]
