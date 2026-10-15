@@ -10,7 +10,7 @@ from sf_events.models import PACIFIC, Event
 from sf_events.sources import SOURCES
 from sf_events.store import Store
 
-COMMANDS = ("list", "rescrape", "enrich", "status")
+COMMANDS = ("list", "rescrape", "enrich", "lookup", "status")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     # `sf-events` alone lists, so the subcommand is optional
     cmd = argv.pop(0) if argv and argv[0] in COMMANDS else "list"
     store = Store()
-    return {"list": cmd_list, "rescrape": cmd_rescrape, "enrich": cmd_enrich, "status": cmd_status}[cmd](store, argv)
+    return {"list": cmd_list, "rescrape": cmd_rescrape, "enrich": cmd_enrich, "lookup": cmd_lookup, "status": cmd_status}[cmd](store, argv)
 
 
 def cmd_rescrape(store: Store, argv: list[str]) -> int:
@@ -44,6 +44,28 @@ def cmd_enrich(store: Store, argv: list[str]) -> int:
         ok &= bool(run["ok"])
         print(f"{name}: {run['count']} rows enriched" if run["ok"] else f"{name}: failed, {run['error']}")
     return 0 if ok else 1
+
+
+def cmd_lookup(store: Store, argv: list[str]) -> int:
+    from sf_events import config, lookup
+
+    p = argparse.ArgumentParser(prog="sf-events lookup", description="search the web for who the guests are")
+    p.add_argument("key", nargs="?", help="a guest list key like luma:ens8b1qj, default: every list with work left")
+    p.add_argument("--budget", type=int, default=lookup.SEARCH_BUDGET, help="searches this pass (2 firecrawl credits each)")
+    args = p.parse_args(argv)
+    if not config.lookup_enabled():
+        print("lookup is off: put FIRECRAWL_API_KEY and ANTHROPIC_API_KEY in .env", file=sys.stderr)
+        return 1
+    keys = [args.key] if args.key else lookup.lists_with_work(store)
+    if not keys:
+        print("nothing to look up")
+        return 0
+    for key in keys:
+        r = lookup.lookup_list(store, key, budget=args.budget)
+        print(f"{key}: searched {r['searched']}, identified {r['read']}, skipped {r['skipped']} (no anchor), {r['remaining']} left to search, {r.get('pending_read', 0)} waiting for the model")
+        if r.get("read_error"):
+            print(f"  model read failed, evidence kept for next time: {r['read_error']}", file=sys.stderr)
+    return 0
 
 
 def cmd_status(store: Store, argv: list[str]) -> int:

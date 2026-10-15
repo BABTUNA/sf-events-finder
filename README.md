@@ -7,6 +7,7 @@ uv sync
 uv run sf-events                       # next 7 days, grouped by day (pulls first if the store is stale)
 uv run sf-events rescrape              # pull every source now
 uv run sf-events enrich                # one description pass for sources that have one (luma)
+uv run sf-events lookup                # search the web for who scraped guests are (needs keys in .env)
 uv run sf-events status                # when each source last ran, description coverage, failures
 uv run sf-events --days 30             # further out
 uv run sf-events --search hackathon    # filter by name or summary
@@ -57,6 +58,19 @@ Guest lists on Partiful and Luma are only visible logged in, so they come from a
 The server keys the list the same way dedupe keys events, so it lines up with whichever source has the event. [sf_events/people.py](sf_events/people.py) tags each guest from their bio (investor, founder, exec, researcher, engineer, student, host, plus `@org` for a notable company) and gives the event counts and a notable list. Investors and founders in the room add up to 25 points to the score. In the UI the row shows `212 guests · 3 investors · 14 founders` and `who` opens the notable people with their links.
 
 Both extractors are built against real guest lists. Partiful rows carry a bio, so that is what gets analyzed. Luma's guest modal has names and social links but no bios, so the server fills them from Luma's public profile API (`api.luma.com/user/profile?username=...`): short bio, LinkedIn, X, website, and how many events the person has hosted. Hosting three or more earns a `host` tag, since that is a connector. The lookups run three wide and stop at the first 429, so a huge list may come back partly described.
+
+## Who they are, from the web
+
+Most people never write a bio, so there is a third layer that searches for them. It is off unless `.env` has both keys:
+
+```
+FIRECRAWL_API_KEY=...   # search
+ANTHROPIC_API_KEY=...   # reading the results
+```
+
+Per guest, cheapest first: a LinkedIn slug in their links becomes one exact search whose result title is their LinkedIn headline. Otherwise a full name plus an X or Instagram handle becomes an anchored web search, and only results that mention the handle, or the name on LinkedIn, are kept. A first name alone with no handle is skipped, since there is no honest way to find "Aidan". Then Claude reads the evidence in batches and returns role, company, headline, whether they are worth meeting, and how confident it is, with instructions to answer unknown when the evidence could be a different person with the same name.
+
+Results live in a `people` table keyed by the strongest anchor, so someone seen at three events costs one lookup, and misses are remembered. The web server runs one bounded pass per minute while any list has work (60 searches, about 120 Firecrawl credits), `sf-events lookup [key]` runs a pass by hand, and the panel has a `look up more` button. Code in [sf_events/lookup.py](sf_events/lookup.py).
 
 ## Categories
 

@@ -36,6 +36,11 @@ create table if not exists runs (
     error text
 );
 create index if not exists runs_source on runs(source, id);
+create table if not exists people (
+    key text primary key,
+    data text not null,
+    looked_up_at text not null
+);
 create table if not exists guest_lists (
     key text primary key,
     event_url text not null,
@@ -125,6 +130,37 @@ class Store:
                    scraped_at = excluded.scraped_at, guests = excluded.guests, analysis = excluded.analysis""",
                 (key, event_url, page_url, _now(), json.dumps(guests), json.dumps(analysis)),
             )
+
+    def update_analysis(self, key: str, analysis: dict) -> None:
+        with self._conn() as c:
+            c.execute("update guest_lists set analysis = ? where key = ?", (json.dumps(analysis), key))
+
+    def all_guest_lists(self) -> dict[str, dict]:
+        with self._conn() as c:
+            rows = c.execute("select * from guest_lists").fetchall()
+        return {r["key"]: self._guest_row(r) for r in rows}
+
+    # people, what a lookup found, keyed by their strongest anchor
+
+    def person(self, key: str) -> dict | None:
+        with self._conn() as c:
+            r = c.execute("select data, looked_up_at from people where key = ?", (key,)).fetchone()
+        if not r:
+            return None
+        d = json.loads(r["data"])
+        d["looked_up_at"] = r["looked_up_at"]
+        return d
+
+    def set_person(self, key: str, data: dict) -> None:
+        with self._conn() as c:
+            c.execute(
+                "insert into people (key, data, looked_up_at) values (?, ?, ?) on conflict(key) do update set data = excluded.data, looked_up_at = excluded.looked_up_at",
+                (key, json.dumps(data), _now()),
+            )
+
+    def people_count(self) -> int:
+        with self._conn() as c:
+            return c.execute("select count(*) from people").fetchone()[0]
 
     def guests(self, key: str) -> dict | None:
         with self._conn() as c:

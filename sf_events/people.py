@@ -39,7 +39,11 @@ PROFILE_WORKERS = 3
 PROFILE_BUDGET = 250
 
 
-def tag_guest(g: dict) -> dict:
+# what a search-backed read adds, on top of the bio rules
+LOOKUP_WEIGHT = {"investor": 12, "founder": 8, "exec": 6, "researcher": 4, "engineer": 1, "operator": 1, "student": 0, "unknown": 0}
+
+
+def tag_guest(g: dict, lookup: dict | None = None) -> dict:
     bio = (g.get("bio") or "").strip()
     links = [l for l in (g.get("links") or []) if l]
     text = f"{bio} {' '.join(links)}"
@@ -57,8 +61,28 @@ def tag_guest(g: dict) -> dict:
     if (g.get("hosted") or 0) >= HOST_MIN:
         tags.append("host")
         weight += 3
-    # a founder who is also a student is a student founder, keep both but it reads fine
-    return {"name": g.get("name", "").strip(), "bio": bio, "links": links, "tags": tags, "weight": weight, "hosted": g.get("hosted")}
+    out = {"name": g.get("name", "").strip(), "bio": bio, "links": links, "tags": tags, "weight": weight, "hosted": g.get("hosted")}
+    if lookup and lookup.get("pending"):
+        lookup = None
+    if lookup and lookup.get("role") and lookup["role"] != "unknown":
+        role = lookup["role"]
+        if role not in tags:
+            tags.append(role)
+        w = LOOKUP_WEIGHT.get(role, 0) + (4 if lookup.get("worth_meeting") else 0)
+        if lookup.get("confidence") == "low":
+            w //= 2
+        weight += w
+        if lookup.get("company"):
+            tags.append("@" + lookup["company"].lower())
+        out.update(weight=weight, headline=lookup.get("headline") or "", reason=lookup.get("reason") or "",
+                   confidence=lookup.get("confidence"), evidence=[e.get("url") for e in lookup.get("evidence") or []][:3])
+        # a search hit with a linkedin url is a link worth having
+        for e in lookup.get("evidence") or []:
+            if e.get("url") and e["url"] not in out["links"] and "linkedin.com/in/" in e["url"]:
+                out["links"].append(e["url"])
+    elif lookup:
+        out.update(confidence=lookup.get("confidence"), reason=lookup.get("reason") or "")
+    return out
 
 
 def enrich_luma(guests: list[dict], *, client: httpx.Client | None = None) -> list[dict]:
@@ -133,9 +157,15 @@ def parse_profile(body: dict) -> dict:
     }
 
 
-def analyze(guests: list[dict]) -> dict:
-    tagged = [tag_guest(g) for g in guests if g.get("name")]
-    counts = {"guests": len(tagged), "with_bio": sum(1 for t in tagged if t["bio"])}
+def analyze(guests: list[dict], lookups: dict[str, dict] | None = None) -> dict:
+    """lookups: person_key -> what the search layer found, see sf_events.lookup"""
+    from sf_events.lookup import person_key
+
+    lookups = lookups or {}
+    tagged = [tag_guest(g, lookups.get(person_key(g) or "")) for g in guests if g.get("name")]
+    counts = {"guests": len(tagged), "with_bio": sum(1 for t in tagged if t["bio"]),
+              "looked_up": sum(1 for g in guests if (person_key(g) or "") in lookups),
+              "identified": sum(1 for t in tagged if t.get("headline"))}
     for tag in ("investor", "founder", "exec", "researcher", "engineer", "student", "host"):
         counts[tag] = sum(1 for t in tagged if tag in t["tags"])
     notable = sorted((t for t in tagged if t["weight"] > 0), key=lambda t: -t["weight"])[:TOP_N]

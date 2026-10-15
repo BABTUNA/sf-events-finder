@@ -176,6 +176,11 @@
   .people .row.stands .nm { color: var(--ink); }
   .people .row:not(.stands) .nm { font-weight: 500; color: var(--ink-2); }
   .people .hosted { color: var(--ink-3); font: 400 11px var(--mono); }
+  .people .found { display: block; color: var(--ink); }
+  .people .said { display: block; color: var(--ink-3); font-size: 12px; }
+  .people .reason { display: block; color: var(--ink-2); font-size: 12px; font-style: italic; margin-top: 2px; }
+  .people .conf { font: 400 10px var(--mono); color: var(--ink-3); }
+  .people .meta .open { display: inline-block; margin-left: 6px; padding: 2px 7px; border: 1px solid var(--rule); border-radius: 999px; cursor: pointer; color: var(--ink-2); }
   .orphans { margin: 18px 0 0; padding: 10px 14px; border-left: 3px solid var(--rule); font: 400 12px/1.5 var(--mono); color: var(--ink-2); }
   .orphans a { color: var(--ink); }
   @media (max-width: 640px) { .people { padding-left: 16px; } .people .row { grid-template-columns: 1fr; gap: 2px; } }
@@ -508,10 +513,12 @@
 
   function personRow(p) {
     const roles = (p.tags || []).filter((t) => !t.startsWith("@")).slice(0, 2);
-    const orgs = (p.tags || []).filter((t) => t.startsWith("@"));
+    const orgs = (p.tags || []).filter((t) => t.startsWith("@")).slice(0, 2);
+    const found = p.headline ? `<span class="found">${esc(p.headline)}${p.confidence && p.confidence !== "high" ? ` <span class="conf">${esc(p.confidence)} confidence</span>` : ""}</span>` : "";
+    const why = p.reason ? `<span class="reason">${esc(p.reason)}</span>` : "";
     return `<div class="row ${p.weight > 0 ? "stands" : ""}">
       <span class="nm">${esc(p.name)}${roles.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</span>
-      <span class="bio">${esc(p.bio || "")}${orgs.map((t) => ` <span class="tag">${esc(t)}</span>`).join("")}${p.hosted >= 3 ? `<span class="hosted"> · hosted ${p.hosted}</span>` : ""}</span>
+      <span class="bio">${found}${p.bio ? `<span class="said">${esc(p.bio)}</span>` : ""}${orgs.map((t) => ` <span class="tag">${esc(t)}</span>`).join("")}${p.hosted >= 3 ? `<span class="hosted"> · hosted ${p.hosted}</span>` : ""}${why}</span>
       <span class="lk">${(p.links || []).map((l) => `<a href="${esc(l)}" target="_blank" rel="noopener">${esc(host(l))}</a>`).join("")}</span>
     </div>`;
   }
@@ -524,6 +531,10 @@
       const r = await fetch(`/api/guests/${encodeURIComponent(key)}`);
       if (!r.ok) { panel.querySelector(".plist").textContent = "could not load the guest list"; return; }
       const body = await r.json();
+      const lk = body.lookup || {};
+      const meta = panel.querySelector(".meta");
+      if (lk.enabled) meta.insertAdjacentHTML("beforeend", ` · looked up ${lk.looked_up} of ${lk.lookable}${lk.looked_up < lk.lookable ? ` <span class="open" data-lookup="${esc(key)}">look up more</span>` : ""}`);
+      else meta.insertAdjacentHTML("beforeend", " · web lookup off (no keys in .env)");
       // everyone, tagged and weighted, notable first then alphabetical
       const byName = new Map(body.analysis.notable.map((p) => [p.name, p]));
       const all = body.guests.map((g) => byName.get(g.name) || { ...g, tags: g.tags || [], weight: 0 });
@@ -542,6 +553,20 @@
       (rest.length ? `<div class="grp">${rest.length} more</div>` + rest.map(personRow).join("") : "") +
       (!rows.length ? `<div class="grp">nobody matches</div>` : "");
   }
+
+  // run one lookup pass for a list, then refetch it
+  $("#list").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-lookup]"); if (!b) return;
+    ev.preventDefault(); ev.stopPropagation();
+    b.textContent = "looking up…";
+    const key = b.dataset.lookup;
+    const r = await fetch(`/api/lookup/${encodeURIComponent(key)}`, { method: "POST" });
+    peopleCache.delete(key);
+    const panel = document.getElementById("p-" + key);
+    if (!r.ok) { b.textContent = "lookup failed"; return; }
+    panel.querySelector(".meta").textContent = panel.querySelector(".meta").textContent.split(" · looked up")[0];
+    fillPanel(panel);
+  });
 
   $("#list").addEventListener("input", (ev) => {
     const f = ev.target.closest(".pfilter"); if (!f) return;

@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from sf_events import jobs, people, resolve
+from sf_events import config, jobs, lookup, people, resolve
 from sf_events.categorize import FORMATS, TOPICS
 from sf_events.merge import dedupe, dedupe_key
 from sf_events.models import PACIFIC, Event
@@ -39,6 +39,7 @@ def _scheduler(stop: threading.Event) -> None:
         with _lock:
             jobs.rescrape_due(store)
             jobs.enrich_due(store)
+            lookup.lookup_due(store)
         stop.wait(TICK)
 
 
@@ -69,6 +70,7 @@ def api_events(days: int | None = Query(default=None, ge=1)):
     keys = {dedupe_key(e) for e in events}
     return {
         "sources": jobs.status(store),
+        "lookup": {"enabled": config.lookup_enabled(), "people": store.people_count(), "pending_lists": len(lookup.lists_with_work(store)) if config.lookup_enabled() else 0},
         # scraped lists whose event is not in this window, so they are not lost
         "orphan_guest_lists": [
             {"key": k, "event_url": g["event_url"], "scraped_at": g["scraped_at"], "summary": g["analysis"]["summary"]}
@@ -122,7 +124,26 @@ def api_get_guests(key: str):
     g = store.guests(key)
     if not g:
         raise HTTPException(404, "no guest list for that event")
+    g["lookup"] = {"enabled": config.lookup_enabled(), **lookup.progress(store, g["guests"])}
     return g
+
+
+@app.post("/api/lookup/{key:path}")
+def api_lookup(key: str):
+    """one bounded lookup pass for this list, right now"""
+    if not config.lookup_enabled():
+        raise HTTPException(400, "lookup is off: FIRECRAWL_API_KEY and ANTHROPIC_API_KEY are needed in .env")
+    if not store.guests(key):
+        raise HTTPException(404, "no guest list for that event")
+    with _lock:
+        run_id = store.start_run(key, job="lookup")
+        try:
+            r = lookup.lookup_list(store, key)
+            store.finish_run(run_id, ok=True, count=r["searched"], added=r["read"])
+        except Exception as e:
+            store.finish_run(run_id, ok=False, error=f"{type(e).__name__}: {e}")
+            raise HTTPException(502, f"lookup failed: {e}")
+    return r
 
 
 def _event_url(page_url: str) -> str:
