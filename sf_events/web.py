@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 
 from sf_events import jobs
 from sf_events.categorize import FORMATS, TOPICS
+from sf_events.merge import dedupe
 from sf_events.models import PACIFIC
 from sf_events.sources import SOURCES
 from sf_events.store import Store
@@ -56,7 +57,7 @@ def api_events(days: int | None = Query(default=None, ge=1)):
             jobs.rescrape_due(store)
     start = datetime.now(PACIFIC).replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=days) if days else None
-    events = [e for e in store.events() if e.start >= start and (end is None or e.start < end)]
+    events = dedupe([e for e in store.events() if e.start >= start and (end is None or e.start < end)])
     events.sort(key=lambda e: (e.start, e.name))
     return {
         "sources": jobs.status(store),

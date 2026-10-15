@@ -24,6 +24,10 @@ class Event:
     # hackathon, conference, meetup, or None when the source does not say
     kind: str | None
     image_url: str | None
+    # who is putting it on, when the source says
+    host: str | None = None
+    # other sources that list the same event, filled by dedupe
+    also: tuple[str, ...] = ()
 
     @property
     def start_local(self) -> datetime:
@@ -50,7 +54,9 @@ class Event:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Event":
-        fields = {k: d[k] for k in cls.__dataclass_fields__}
+        # rows stored before a field existed fall back to its default
+        fields = {k: d[k] for k in cls.__dataclass_fields__ if k in d}
+        fields["also"] = tuple(d.get("also") or ())
         fields["start"] = datetime.fromisoformat(d["start"])
         fields["end"] = datetime.fromisoformat(d["end"]) if d.get("end") else None
         return cls(**fields)
@@ -59,6 +65,7 @@ class Event:
         d = asdict(self)
         d["start"] = self.start.isoformat()
         d["end"] = self.end.isoformat() if self.end else None
+        d["also"] = list(self.also)
         d["start_local"] = self.start_local.isoformat()
         d["where"] = self.where
         d["format"] = self.format

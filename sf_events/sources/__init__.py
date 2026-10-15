@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 
 from sf_events.models import Event
-from sf_events.sources import cerebralvalley
+from sf_events.sources import cerebralvalley, luma
 
 
 @dataclass(frozen=True)
@@ -20,5 +20,6 @@ SOURCES: dict[str, Source] = {
     s.name: s
     for s in (
         Source("cerebralvalley", cerebralvalley.fetch, timedelta(minutes=30)),
+        Source("luma", luma.fetch, timedelta(hours=1)),
     )
 }

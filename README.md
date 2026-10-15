@@ -1,6 +1,6 @@
 # sf-events-finder
 
-One list of upcoming AI events in the SF Bay Area, pulled live. Cerebral Valley today, Luma and X next. Everything defaults to the Bay Area because that is the only place I am looking.
+One list of upcoming AI and tech events in the SF Bay Area. Cerebral Valley and Luma today, X next. Everything defaults to the Bay Area because that is the only place I am looking.
 
 ```bash
 uv sync
@@ -33,6 +33,10 @@ One page, same data. Search, pick a range (7, 14, 30 days or everything), click 
 
 ![web ui](docs/web.png)
 
+## Dedupe
+
+Cerebral Valley mostly republishes Luma links, so [sf_events/merge.py](sf_events/merge.py) collapses events across sources at read time. The key is the Luma slug when the URL is a Luma URL, otherwise the URL with tracking stripped. The Luma record wins on fields, Cerebral Valley fills in the summary it wrote, and the merged event carries `also: ["cerebralvalley"]`. The UI shows a `CV` badge on anything Cerebral Valley lists, which is a decent curation signal in a list of 1,200.
+
 ## Categories
 
 Cerebral Valley only labels its own hackathons, so categories are keyword rules over the name and summary in [sf_events/categorize.py](sf_events/categorize.py). Two axes:
@@ -55,6 +59,14 @@ Three ways a rescrape happens:
 `sf-events status` and `GET /api/status` show per source: count, last successful pull, last error, next due. See [sf_events/store.py](sf_events/store.py) and [sf_events/jobs.py](sf_events/jobs.py).
 
 ## Sources
+
+**luma** The map at luma.com/ai/map is fed by a public discover endpoint that takes a bounding box, so one box over the Bay Area walks every discoverable event behind every dot, no slug and no clicking:
+
+```
+GET https://api.luma.com/discover/get-paginated-events?west=-122.7&east=-121.7&south=37.2&north=38.1&pagination_limit=50[&pagination_cursor=...]
+```
+
+About 1,200 upcoming events, 50 per page, no auth. Entries carry no description, so Luma events have no summary and categories lean on the name. Roughly a quarter of the Luma events Cerebral Valley lists are not marked discoverable and never appear here, which is why both sources stay. See [sf_events/sources/luma.py](sf_events/sources/luma.py).
 
 **cerebralvalley** The events page is a Next.js app that fills itself from a public JSON API, so the scraper calls that instead of parsing HTML:
 

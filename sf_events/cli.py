@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from sf_events import jobs
 from sf_events.categorize import FORMATS, TOPICS
+from sf_events.merge import dedupe
 from sf_events.models import PACIFIC, Event
 from sf_events.sources import SOURCES
 from sf_events.store import Store
@@ -77,6 +78,8 @@ def cmd_list(store: Store, argv: list[str]) -> int:
     for name in args.source or sorted(SOURCES):
         events.extend(e for e in store.events(name) if e.start >= start and (end is None or e.start < end))
 
+    events = dedupe(events)
+
     if args.search:
         q = args.search.lower()
         events = [e for e in events if q in e.name.lower() or q in (e.summary or "").lower()]
@@ -110,7 +113,8 @@ def print_table(events: list[Event]) -> None:
         t = e.start_local.strftime("%-I:%M %p").rjust(8)
         tags = " ".join(f"#{x}" for x in (e.format, *e.topics) if x != "other")
         print(f"  {t}  {e.name}  {tags}")
-        print(f"            {e.where}  ·  {e.url}")
+        also = f"  (also on {', '.join(e.also)})" if e.also else ""
+        print(f"            {e.where}  ·  {e.url}{also}")
     print(f"\n{len(events)} events")
 
 

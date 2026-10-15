@@ -1,0 +1,117 @@
+{
+ "entries": [
+  {
+   "api_id": "evt-afKOzyqPAisCfbU",
+   "event": {
+    "api_id": "evt-afKOzyqPAisCfbU",
+    "calendar_api_id": "cal-btD6NirgIaGiPWn",
+    "cover_url": "https://images.lumacdn.com/uploads/8i/cf8b5f34-67c4-4167-881a-79549fbb8b46.png",
+    "end_at": "2026-10-17T01:45:00.000Z",
+    "event_type": "independent",
+    "hide_rsvp": false,
+    "location_type": "offline",
+    "name": "2026 DataDrivenPharma West",
+    "one_to_one": true,
+    "recurrence_id": null,
+    "show_guest_list": false,
+    "social_image_url": "https://images.lumacdn.com/event-social/t8/f8a9368c-214d-4d2a-9cf2-2d425ca9a9c0.png",
+    "start_at": "2026-10-15T15:00:00.000Z",
+    "timezone": "America/Los_Angeles",
+    "url": "ddp_west_2026",
+    "user_api_id": "usr-vGY3jejN7SlFc1T",
+    "visibility": "public",
+    "geo_address_info": {
+     "city": "South San Francisco",
+     "type": "google",
+     "region": "California",
+     "address": "Embassy Suites by Hilton San Francisco Airport Oyster Point",
+     "country": "United States",
+     "place_id": "ChIJa5oD01J4j4ARYwLoIsrydsY",
+     "localized": null,
+     "city_state": "South San Francisco, CA",
+     "description": "",
+     "sublocality": "The East Side",
+     "country_code": "US",
+     "full_address": "Embassy Suites by Hilton San Francisco Airport Oyster Point, 250 Gateway Blvd, South San Francisco, CA 94080, USA",
+     "region_short": "CA",
+     "short_address": "250 Gateway Blvd, South San Francisco",
+     "place_coordinate": null,
+     "apple_maps_place_id": "IBE1BD02B47DABFB8",
+     "mode": "shown"
+    },
+    "geo_address_visibility": "public",
+    "coordinate": {
+     "longitude": -122.40099239999999,
+     "latitude": 37.655471999999996
+    },
+    "waitlist_enabled": false,
+    "waitlist_status": "disabled"
+   },
+   "start_at": "2026-10-15T15:00:00.000Z",
+   "hosts": [
+    {
+     "name": "DataDriven Pharma",
+     "api_id": "usr-vGY3jejN7SlFc1T"
+    }
+   ],
+   "calendar": {
+    "name": "Personal",
+    "api_id": "cal-btD6NirgIaGiPWn"
+   },
+   "guest_count": 0
+  },
+  {
+   "api_id": "evt-to2mDP55Yaw93AH",
+   "event": {
+    "api_id": "evt-to2mDP55Yaw93AH",
+    "calendar_api_id": "cal-zEL9BYZ1DEdoIfx",
+    "cover_url": "https://images.lumacdn.com/event-covers/oa/88938831-8dd5-4162-b13b-932e8684974d.jpg",
+    "end_at": "2026-10-15T22:00:00.000Z",
+    "event_type": "independent",
+    "hide_rsvp": false,
+    "location_type": "offline",
+    "name": "[In-Person] Product Design Office Hours with Phil Balliet",
+    "one_to_one": true,
+    "recurrence_id": null,
+    "show_guest_list": true,
+    "social_image_url": "https://images.lumacdn.com/event-social/mj/811ad77b-9538-48da-b4a5-f2beb8839849.png",
+    "start_at": "2026-10-15T17:00:00.000Z",
+    "timezone": "America/Los_Angeles",
+    "url": "kt37tvp0",
+    "user_api_id": "usr-C6oF28E2X6I73GI",
+    "visibility": "public",
+    "geo_address_info": {
+     "mode": "obfuscated",
+     "city": "Palo Alto",
+     "city_state": "Palo Alto, CA",
+     "sublocality": null,
+     "country": "United States",
+     "country_code": "US",
+     "region": "California",
+     "region_short": "CA"
+    },
+    "geo_address_visibility": "guests-only",
+    "coordinate": {
+     "latitude": 37.41898439656029,
+     "longitude": -122.15099536538783
+    },
+    "waitlist_enabled": false,
+    "waitlist_status": "disabled"
+   },
+   "start_at": "2026-10-15T17:00:00.000Z",
+   "hosts": [
+    {
+     "name": "StartX Team",
+     "api_id": "usr-C6oF28E2X6I73GI"
+    }
+   ],
+   "calendar": {
+    "name": "StartX Founder Exclusive",
+    "api_id": "cal-zEL9BYZ1DEdoIfx"
+   },
+   "guest_count": 5
+  }
+ ],
+ "has_more": true,
+ "next_cursor": "abc"
+}

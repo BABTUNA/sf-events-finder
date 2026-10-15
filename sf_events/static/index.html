@@ -123,6 +123,8 @@
   .chip:disabled { opacity: .35; cursor: default; }
   #topics .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--fog); }
   #topics .chip[aria-pressed="true"] .n { color: var(--fog); }
+  .ev .cv { font: 600 9px/1 var(--mono); color: var(--fog); background: var(--ink-2); padding: 3px 4px; border-radius: 3px; vertical-align: 2px; margin-left: 6px; letter-spacing: .06em; }
+  .ev .host-name { color: var(--ink-3); }
   .ev .tags { font: 400 11px/1 var(--mono); color: var(--ink-3); margin-top: 3px; }
   .ev .tags span { margin-right: 8px; }
 
@@ -203,7 +205,7 @@
   <div class="bar">
     <h1>SF events <small id="status">loading</small></h1>
     <div class="sources" id="sources" aria-label="Sources"></div>
-    <input class="search" id="q" type="search" placeholder="Search names, places, summaries" aria-label="Search events" autocomplete="off">
+    <input class="search" id="q" type="search" placeholder="Search names, places, hosts, summaries" aria-label="Search events" autocomplete="off">
     <div class="seg" id="range" role="group" aria-label="How far ahead">
       <button data-days="7" aria-pressed="true">7d</button>
       <button data-days="14" aria-pressed="false">14d</button>
@@ -267,7 +269,7 @@
       if (state.format && e.format !== state.format) return false;
       if (state.topics.size && !e.topics.some((t) => state.topics.has(t))) return false;
       if (q) {
-        const hay = `${e.name} ${e.where || ""} ${e.summary || ""}`.toLowerCase();
+        const hay = `${e.name} ${e.where || ""} ${e.host || ""} ${e.summary || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -341,9 +343,9 @@
           const live = new Date(e.start).getTime() <= now && e.end && new Date(e.end).getTime() > now;
           return `<a class="ev ${live ? "live" : ""}" href="${e.url}" target="_blank" rel="noopener">
             <span class="t">${fmt(e.start, { hour: "numeric", minute: "2-digit" })}${live ? '<span class="live-dot">LIVE</span>' : ""}</span>
-            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}</span>
+            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}${e.source === "cerebralvalley" || e.also.includes("cerebralvalley") ? `<span class="cv" title="Listed by Cerebral Valley">CV</span>` : ""}</span>
             <span class="host">${esc(host(e.url))}</span>
-            <span class="sub"><span class="where">${esc(e.where || "")}</span>${e.summary ? `<span class="sum">${esc(e.summary)}</span>` : ""}
+            <span class="sub"><span class="where">${esc(e.where || "")}${e.host ? `<span class="host-name"> · ${esc(e.host)}</span>` : ""}</span>${e.summary ? `<span class="sum">${esc(e.summary)}</span>` : ""}
               <span class="tags">${[e.format === "other" ? "" : e.format, ...e.topics].filter(Boolean).map((t) => `<span>#${esc(t)}</span>`).join("")}</span></span>
           </a>`;
         }).join("")}
