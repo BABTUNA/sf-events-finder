@@ -3,6 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from sf_events.categorize import event_format, event_topics
+from sf_events import score as _score
 
 # everything is for the bay area, so display times are always pacific
 PACIFIC = ZoneInfo("America/Los_Angeles")
@@ -30,6 +31,9 @@ class Event:
     also: tuple[str, ...] = ()
     # labels the source itself put on the event, lowercased ("ai", "tech")
     tags: tuple[str, ...] = ()
+    # ticketing, when the source says. None means unknown
+    sold_out: bool | None = None
+    free: bool | None = None
 
     @property
     def start_local(self) -> datetime:
@@ -48,6 +52,14 @@ class Event:
     def topics(self) -> tuple[str, ...]:
         # keyword rules plus whatever the source tagged it with
         return tuple(dict.fromkeys(event_topics(self.name, self.summary) + self.tags))
+
+    @property
+    def score(self) -> int:
+        return _score.score(self)[0]
+
+    @property
+    def score_reasons(self) -> list[str]:
+        return _score.score(self)[1]
 
     @property
     def where(self) -> str:
@@ -71,6 +83,7 @@ class Event:
         d["end"] = self.end.isoformat() if self.end else None
         d["also"] = list(self.also)
         d["tags"] = list(self.tags)
+        d["score"], d["score_reasons"] = _score.score(self)
         d["start_local"] = self.start_local.isoformat()
         d["where"] = self.where
         d["format"] = self.format

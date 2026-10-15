@@ -78,6 +78,8 @@ def cmd_list(store: Store, argv: list[str]) -> int:
     p.add_argument("--format", choices=FORMATS, action="append", help="hackathon, talk, social... repeatable")
     p.add_argument("--topic", action="append", help="agents, infra, robotics, or a source tag like ai, repeatable")
     p.add_argument("--source", choices=sorted(SOURCES), action="append", help="only events that source lists, repeatable")
+    p.add_argument("--sort", choices=("time", "score"), default="time", help="order by start time (default) or by how worth it it looks")
+    p.add_argument("--min-score", type=int, default=0, metavar="N", help="hide events scoring under N (0-100)")
     p.add_argument("--stale", action="store_true", help="read what is stored even if a source is past its interval")
     p.add_argument("--json", action="store_true", help="print json instead of the table")
     p.add_argument("--out", help="also write json here")
@@ -103,7 +105,12 @@ def cmd_list(store: Store, argv: list[str]) -> int:
         events = [e for e in events if e.format in args.format]
     if args.topic:
         events = [e for e in events if set(e.topics) & set(args.topic)]
-    events.sort(key=lambda e: (e.start, e.name))
+    if args.min_score:
+        events = [e for e in events if e.score >= args.min_score]
+    if args.sort == "score":
+        events.sort(key=lambda e: (-e.score, e.start, e.name))
+    else:
+        events.sort(key=lambda e: (e.start, e.name))
 
     if args.out:
         with open(args.out, "w") as f:
@@ -112,24 +119,28 @@ def cmd_list(store: Store, argv: list[str]) -> int:
         json.dump([e.to_dict() for e in events], sys.stdout, indent=1)
         print()
     else:
-        print_table(events)
+        print_table(events, by_day=args.sort == "time")
     return 0
 
 
-def print_table(events: list[Event]) -> None:
+def print_table(events: list[Event], by_day: bool = True) -> None:
     if not events:
         print("nothing found")
         return
     day = None
     for e in events:
         d = e.start_local.date()
-        if d != day:
+        if by_day and d != day:
             day = d
             print(f"\n{e.start_local:%a %b %-d}")
-        t = e.start_local.strftime("%-I:%M %p").rjust(8)
+        # when sorted by score the day header goes, so the date rides along on the row
+        t = (e.start_local.strftime("%-I:%M %p") if by_day else e.start_local.strftime("%a %b %-d %-I:%M %p")).rjust(8 if by_day else 20)
         tags = " ".join(f"#{x}" for x in (e.format, *e.topics) if x != "other")
-        print(f"  {t}  {source_label(e):8} {e.name}  {tags}")
-        print(f"                     {e.where}  ·  {e.url}")
+        pad = " " * (21 if by_day else 33)
+        print(f"  {t}  {e.score:3}  {source_label(e):8} {e.name}  {tags}")
+        print(f"{pad}{e.where}  ·  {e.url}")
+        if e.score_reasons:
+            print(f"{pad}why: {', '.join(e.score_reasons)}")
     print(f"\n{len(events)} events")
 
 

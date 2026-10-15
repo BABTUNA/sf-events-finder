@@ -12,6 +12,7 @@ uv run sf-events --days 30             # further out
 uv run sf-events --search hackathon    # filter by name or summary
 uv run sf-events --format talk --topic agents   # categories, see below
 uv run sf-events --source cerebralvalley        # only what cerebral valley lists
+uv run sf-events --sort score --min-score 40    # most worth going first
 uv run sf-events --all --json > out.json
 ```
 
@@ -38,6 +39,16 @@ One page, same data. Pick a source (both, Luma, Cerebral Valley), a range (7, 14
 ## Dedupe
 
 Cerebral Valley mostly republishes Luma links, so [sf_events/merge.py](sf_events/merge.py) collapses events across sources at read time. The key is the Luma slug when the URL is a Luma URL, otherwise the URL with tracking stripped. The Luma record wins on fields, Cerebral Valley fills in the summary it wrote, and the merged event carries `also: ["cerebralvalley"]`. In the UI a merged event shows both pills. In the CLI the source column reads `luma`, `cv`, or `luma+cv`. Cerebral Valley listing something is a decent curation signal in a list of 1,200.
+
+## Score
+
+Every event gets a 0 to 100 score for how worth going it looks, with the reasons. It is a weighted keyword list in [sf_events/score.py](sf_events/score.py), nothing smarter: cash prizes (plus a dollar figure of 10k or more), investors, founders, hiring, exclusivity, a notable host, hackathon or demo format, Cerebral Valley curation. Sold out takes 40 off, remote and non-tech filler take some off. The weights are the whole model, tune them there.
+
+```bash
+uv run sf-events --days 14 --sort score --min-score 40
+```
+
+In the UI: sort by score, a "worth it" filter at 40, the number on every row and the reasons under it.
 
 ## Categories
 

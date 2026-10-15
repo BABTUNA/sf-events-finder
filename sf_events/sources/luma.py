@@ -90,6 +90,7 @@ def parse(raw: dict) -> Event:
     cal = (raw.get("calendar") or {}).get("name")
     # a personal calendar is just the host again, a community calendar is worth naming
     host = ", ".join(hosts) or (cal if cal and cal != "Personal" else None)
+    tix = raw.get("ticket_info") or {}
     return Event(
         id=f"luma:{ev['api_id']}",
         source="luma",
@@ -104,6 +105,8 @@ def parse(raw: dict) -> Event:
         kind=None,
         image_url=ev.get("cover_url"),
         host=host,
+        sold_out=bool(tix.get("is_sold_out")) if tix else None,
+        free=tix.get("is_free") if tix else None,
     )
 
 

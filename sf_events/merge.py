@@ -44,6 +44,8 @@ def dedupe(events: list[Event]) -> list[Event]:
             host=base.host or next((r.host for r in rest if r.host), None),
             also=tuple(dict.fromkeys(r.source for r in rest if r.source != base.source)),
             tags=tuple(dict.fromkeys(base.tags + tuple(t for r in rest for t in r.tags))),
+            sold_out=base.sold_out if base.sold_out is not None else next((r.sold_out for r in rest if r.sold_out is not None), None),
+            free=base.free if base.free is not None else next((r.free for r in rest if r.free is not None), None),
         )
         out.append(merged)
     return out
