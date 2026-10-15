@@ -229,7 +229,7 @@
   .ev .sub { color: var(--ink-2); font-size: 13.5px; }
   .ev .where { color: var(--ink); display: block; }
   .ev .sum { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-  .ev:hover .sum { -webkit-line-clamp: unset; }
+  /* no hover expansion: it shifts the row's controls under the pointer. the full text is in the tooltip */
   @media (max-width: 640px) {
     .ev { grid-template-columns: 64px 1fr; }
     .ev .t { grid-row: span 3; font-size: 12px; }
@@ -426,7 +426,7 @@
             <span class="t">${state.sort === "score" ? `<span class="tday">${fmt(e.start, { weekday: "short", day: "numeric" })}</span>` : ""}${fmt(e.start, { hour: "numeric", minute: "2-digit" })}${live ? '<span class="live-dot">LIVE</span>' : ""}</span>
             <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}</span>
             <span class="host"><span class="pills"><span class="score ${e.score >= 40 ? "high" : e.score >= 20 ? "mid" : ""}" title="how worth it this looks, 0 to 100">${e.score}</span>${srcs.map((s) => `<span class="pill ${PILL[s]?.cls || "cv"}" title="Listed by ${PILL[s]?.name || s}">${PILL[s]?.label || s}</span>`).join("")}</span><span class="dom">${esc(host(e.url))}</span></span>
-            <span class="sub"><span class="where">${esc(e.where || "")}${e.host ? `<span class="host-name"> · ${esc(e.host)}</span>` : ""}</span>${e.summary ? `<span class="sum">${esc(e.summary)}</span>` : ""}
+            <span class="sub"><span class="where">${esc(e.where || "")}${e.host ? `<span class="host-name"> · ${esc(e.host)}</span>` : ""}</span>${e.summary ? `<span class="sum" title="${esc(e.summary)}">${esc(e.summary)}</span>` : ""}
               <span class="tags">${[e.format === "other" ? "" : e.format, ...e.topics].filter(Boolean).map((t) => `<span>#${esc(t)}</span>`).join("")}</span>
               ${e.score_reasons.length ? `<span class="why"><b>${e.score}</b> · ${esc(e.score_reasons.join(", "))}</span>` : ""}
               ${e.guests ? `<span class="guests">${guestLine(e.guests)}${e.guests.notable.length ? `<span class="open" role="button" data-people="${esc(e.key)}">who is going</span>` : ""}</span>` : ""}</span>
