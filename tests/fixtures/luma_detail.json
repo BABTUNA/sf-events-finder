@@ -1,0 +1,45 @@
+{
+ "kind": "event",
+ "data": {
+  "api_id": "evt-fsCi6IPSI1ziuQo",
+  "categories": [
+   {
+    "api_id": "cat-ai",
+    "name": "AI",
+    "slug": "ai"
+   }
+  ],
+  "description_mirror": {
+   "type": "doc",
+   "content": [
+    {
+     "type": "paragraph",
+     "content": [
+      {
+       "text": "Agentic AI is breaking the assumptions legacy databases were built on. One user action now spawns thousands of agent instances. Context branches per agent in milliseconds. Vectors, transactions, and analytics all need to live in the same place. Fragile multi-database stacks cannot keep up, and the engineering teams holding them together are paying the cost in reliability, operational overhead, and time to market.",
+       "type": "text"
+      }
+     ]
+    },
+    {
+     "type": "paragraph",
+     "content": [
+      {
+       "text": "Infinite agents. Infinite data. They demand one infrastructure built to absorb both, not a patchwork stretched past its limits.",
+       "type": "text"
+      }
+     ]
+    },
+    {
+     "type": "paragraph",
+     "content": [
+      {
+       "text": "Join us at TiDB SCaiLE 2026, the premier event for teams building the data infrastructure behind agentic AI. Come see what becomes possible when one database is built for agent behavior, not retrofitted for it.",
+       "type": "text"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

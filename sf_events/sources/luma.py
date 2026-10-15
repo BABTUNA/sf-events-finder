@@ -9,14 +9,17 @@ every discoverable event behind every map dot
         &pagination_limit=50[&pagination_cursor=...]
 
 response is {"entries": [...], "has_more", "next_cursor"}. pages cap at 50.
-entries carry no description, so summary is empty and categories lean on the
-name. a cold query can take ~20s on the first page, so timeouts are generous
+entries carry no description, so a second pass (`enrich`) hits
+GET https://api.luma.com/url?url=<slug> for events in the next two weeks and
+pulls the description and luma's own category tags. a cold query can take ~20s on the first page, so timeouts are generous
 and transport errors retry. about a quarter of the luma events cerebral valley
 lists are not marked discoverable and never show up here, keep both sources
 """
 
 import time
-from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -106,3 +109,106 @@ def parse(raw: dict) -> Event:
 def _ts(s: str) -> datetime:
     # "2026-10-15T16:00:00.000Z"
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+# ---- second pass: descriptions and luma's own category tags
+
+DETAIL_API = "https://api.luma.com/url"
+# how far ahead to bother fetching a description for
+DETAIL_WINDOW = timedelta(days=14)
+# the detail endpoint 429s fast, a few workers with a real backoff beats many
+DETAIL_WORKERS = 3
+DETAIL_RETRIES = 5
+SUMMARY_CHARS = 400
+
+
+def enrich(events: list[Event], known: dict[str, Event], *, now: datetime | None = None, client: httpx.Client | None = None) -> list[Event]:
+    """fill summary and tags for events starting within DETAIL_WINDOW
+
+    rows already in the store keep what they had, so each event costs one
+    detail call ever. the rest of the list goes back untouched
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now + DETAIL_WINDOW
+    todo = []
+    out = list(events)
+    for i, e in enumerate(events):
+        if e.start >= cutoff:
+            continue
+        k = known.get(e.id)
+        if k and (k.summary or k.tags):
+            out[i] = replace(e, summary=k.summary, tags=k.tags)
+        else:
+            todo.append(i)
+    if not todo:
+        return out
+    own = client is None
+    client = client or httpx.Client(timeout=httpx.Timeout(30, connect=15), headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with ThreadPoolExecutor(DETAIL_WORKERS) as pool:
+            for i, detail in zip(todo, pool.map(lambda i: _detail(client, events[i]), todo)):
+                if detail:
+                    out[i] = replace(events[i], **detail)
+    finally:
+        if own:
+            client.close()
+    return out
+
+
+def _detail(client: httpx.Client, e: Event) -> dict | None:
+    """one event's description and tags, or None. never raises: a miss here
+    just leaves the row without a summary until the next run"""
+    slug = e.url.rsplit("/", 1)[-1]
+    for attempt in range(DETAIL_RETRIES):
+        try:
+            r = client.get(DETAIL_API, params={"url": slug})
+        except httpx.TransportError:
+            time.sleep(2 * (attempt + 1))
+            continue
+        if r.status_code == 200:
+            try:
+                return parse_detail(r.json())
+            except (ValueError, KeyError, TypeError):
+                return None
+        if r.status_code == 429 or r.status_code >= 500:
+            # honour retry-after when given, otherwise back off hard: 5, 10, 20, 40s
+            wait = float(r.headers.get("retry-after") or 0) or 5 * 2**attempt
+            time.sleep(min(wait, 60))
+            continue
+        return None
+    return None
+
+
+def parse_detail(body: dict) -> dict:
+    data = body.get("data") or {}
+    text = _doc_text(data.get("description_mirror"))
+    return {
+        "summary": _clip(text, SUMMARY_CHARS) or None,
+        "tags": tuple(c["name"].lower() for c in data.get("categories") or [] if c.get("name")),
+    }
+
+
+_BLOCKS = {"paragraph", "heading", "listItem", "bulletList", "orderedList", "blockquote"}
+
+
+def _doc_text(node) -> str:
+    # description_mirror is a tiptap document, walk it and keep block breaks
+    if isinstance(node, dict):
+        if node.get("type") == "text":
+            return node.get("text", "")
+        inner = "".join(_doc_text(c) for c in node.get("content", []))
+        return inner + ("\n" if node.get("type") in _BLOCKS else "")
+    if isinstance(node, list):
+        return "".join(_doc_text(c) for c in node)
+    return ""
+
+
+def _clip(text: str, n: int) -> str:
+    text = " ".join(text.split())
+    if len(text) <= n:
+        return text
+    # cut at the last sentence end before the limit, else at a word
+    cut = max(text.rfind(". ", 0, n), text.rfind("! ", 0, n), text.rfind("? ", 0, n))
+    if cut < n // 2:
+        cut = text.rfind(" ", 0, n)
+    return text[: cut + 1].rstrip() + ("" if text[cut] in ".!?" else "…")

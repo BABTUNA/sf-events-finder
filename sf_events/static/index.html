@@ -20,6 +20,11 @@
     --bridge: #d0401f;
     --bridge-soft: rgba(208, 64, 31, 0.12);
     --live: #1f8a4c;
+    /* one colour per source so a row's origin reads at a glance */
+    --luma: #c2357a;
+    --luma-soft: rgba(194, 53, 122, 0.12);
+    --cv: #1f6fb8;
+    --cv-soft: rgba(31, 111, 184, 0.12);
     --display: "Barlow Condensed", "Arial Narrow", sans-serif;
     --body: "IBM Plex Sans", system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -36,11 +41,14 @@
       --bridge: #ef5a30;
       --bridge-soft: rgba(239, 90, 48, 0.16);
       --live: #4ccc7f;
+      --luma: #f06aa8; --luma-soft: rgba(240, 106, 168, 0.16);
+      --cv: #6db3f2; --cv-soft: rgba(109, 179, 242, 0.16);
     }
   }
   :root[data-theme="dark"] {
     --fog: #0f161d; --fog-2: #182129; --card: #141d25; --ink: #e7ecf0; --ink-2: #a6b2bd;
     --ink-3: #6b7884; --rule: #2a3640; --bridge: #ef5a30; --bridge-soft: rgba(239, 90, 48, 0.16); --live: #4ccc7f;
+    --luma: #f06aa8; --luma-soft: rgba(240, 106, 168, 0.16); --cv: #6db3f2; --cv-soft: rgba(109, 179, 242, 0.16);
   }
 
   * { box-sizing: border-box; }
@@ -123,7 +131,16 @@
   .chip:disabled { opacity: .35; cursor: default; }
   #topics .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--fog); }
   #topics .chip[aria-pressed="true"] .n { color: var(--fog); }
-  .ev .cv { font: 600 9px/1 var(--mono); color: var(--fog); background: var(--ink-2); padding: 3px 4px; border-radius: 3px; vertical-align: 2px; margin-left: 6px; letter-spacing: .06em; }
+  .ev.src-luma .t { border-right-color: var(--luma); }
+  .ev.src-cerebralvalley .t { border-right-color: var(--cv); }
+  .ev.live .t { border-right-color: var(--live); }
+  .pill { display: inline-block; font: 600 9px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 6px; border-radius: 3px; }
+  .pill.luma { color: var(--luma); background: var(--luma-soft); }
+  .pill.cv { color: var(--cv); background: var(--cv-soft); }
+  .ev .host { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  .ev .host .pills { display: flex; gap: 4px; }
+  #srcfilter button.is-luma[aria-pressed="true"] { background: var(--luma); color: #fff; }
+  #srcfilter button.is-cv[aria-pressed="true"] { background: var(--cv); color: #fff; }
   .ev .host-name { color: var(--ink-3); }
   .ev .tags { font: 400 11px/1 var(--mono); color: var(--ink-3); margin-top: 3px; }
   .ev .tags span { margin-right: 8px; }
@@ -175,12 +192,11 @@
   .ev:hover { background: var(--card); }
   .ev:hover .name { color: var(--bridge); }
   .ev .t { grid-row: span 2; font: 500 13px/1.5 var(--mono); color: var(--ink-2); text-align: right; padding-right: 6px; border-right: 2px solid var(--rule); }
-  .ev.live .t { border-right-color: var(--live); }
   .ev .t .live-dot { display: block; font-size: 10px; color: var(--live); letter-spacing: .08em; }
   .ev .name { font-weight: 600; font-size: 15px; line-height: 1.3; }
   .ev .kind { font: 500 10px/1 var(--mono); color: var(--bridge); background: var(--bridge-soft); padding: 3px 5px; border-radius: 3px; vertical-align: 2px; margin-left: 6px; text-transform: uppercase; }
   .ev .host { grid-row: span 2; align-self: start; font: 400 12px/1.3 var(--mono); color: var(--ink-3); white-space: nowrap; padding-top: 2px; }
-  .ev .host::after { content: " ↗"; }
+  .ev .host .dom::after { content: " ↗"; }
   .ev .sub { color: var(--ink-2); font-size: 13.5px; }
   .ev .where { color: var(--ink); display: block; }
   .ev .sum { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
@@ -189,7 +205,7 @@
     .ev { grid-template-columns: 64px 1fr; }
     .ev .t { grid-row: span 3; font-size: 12px; }
     .ev .name, .ev .sub, .ev .host { grid-column: 2; }
-    .ev .host { grid-row: auto; padding-top: 4px; }
+    .ev .host { grid-row: auto; padding-top: 4px; flex-direction: row; align-items: center; gap: 8px; }
   }
 
   .empty { margin: 60px 0; text-align: center; color: var(--ink-2); font-size: 14px; }
@@ -206,6 +222,11 @@
     <h1>SF events <small id="status">loading</small></h1>
     <div class="sources" id="sources" aria-label="Sources"></div>
     <input class="search" id="q" type="search" placeholder="Search names, places, hosts, summaries" aria-label="Search events" autocomplete="off">
+    <div class="seg" id="srcfilter" role="group" aria-label="Source">
+      <button data-src="" aria-pressed="true">both</button>
+      <button data-src="luma" aria-pressed="false" class="is-luma">luma</button>
+      <button data-src="cerebralvalley" aria-pressed="false" class="is-cv">cerebral valley</button>
+    </div>
     <div class="seg" id="range" role="group" aria-label="How far ahead">
       <button data-days="7" aria-pressed="true">7d</button>
       <button data-days="14" aria-pressed="false">14d</button>
@@ -228,7 +249,7 @@
 <script>
 (() => {
   const TZ = "America/Los_Angeles";
-  const state = { days: 7, format: "", topics: new Set(), q: "", events: [], sources: [] };
+  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", events: [], sources: [] };
   const $ = (s) => document.querySelector(s);
   let FORMATS = [], TOPICS = [];
 
@@ -266,6 +287,7 @@
     return state.events.filter((e) => {
       const d = ymd(e.start);
       if (end && d >= end) return false;
+      if (state.src && e.source !== state.src && !e.also.includes(state.src)) return false;
       if (state.format && e.format !== state.format) return false;
       if (state.topics.size && !e.topics.some((t) => state.topics.has(t))) return false;
       if (q) {
@@ -341,10 +363,11 @@
           <span class="count">${list.length}</span></h2>
         ${list.map((e) => {
           const live = new Date(e.start).getTime() <= now && e.end && new Date(e.end).getTime() > now;
-          return `<a class="ev ${live ? "live" : ""}" href="${e.url}" target="_blank" rel="noopener">
+          const srcs = [e.source, ...e.also];
+          return `<a class="ev ${live ? "live" : ""} src-${e.source}" href="${e.url}" target="_blank" rel="noopener">
             <span class="t">${fmt(e.start, { hour: "numeric", minute: "2-digit" })}${live ? '<span class="live-dot">LIVE</span>' : ""}</span>
-            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}${e.source === "cerebralvalley" || e.also.includes("cerebralvalley") ? `<span class="cv" title="Listed by Cerebral Valley">CV</span>` : ""}</span>
-            <span class="host">${esc(host(e.url))}</span>
+            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}</span>
+            <span class="host"><span class="pills">${srcs.map((s) => `<span class="pill ${s === "luma" ? "luma" : "cv"}" title="Listed by ${s === "luma" ? "Luma" : "Cerebral Valley"}">${s === "luma" ? "luma" : "cv"}</span>`).join("")}</span><span class="dom">${esc(host(e.url))}</span></span>
             <span class="sub"><span class="where">${esc(e.where || "")}${e.host ? `<span class="host-name"> · ${esc(e.host)}</span>` : ""}</span>${e.summary ? `<span class="sum">${esc(e.summary)}</span>` : ""}
               <span class="tags">${[e.format === "other" ? "" : e.format, ...e.topics].filter(Boolean).map((t) => `<span>#${esc(t)}</span>`).join("")}</span></span>
           </a>`;
@@ -393,6 +416,7 @@
     });
   }
   seg("#range", "days", Number);
+  seg("#srcfilter", "src", String);
   $("#formats").addEventListener("click", (ev) => {
     const b = ev.target.closest("button[data-format]"); if (!b) return;
     state.format = state.format === b.dataset.format ? "" : b.dataset.format;

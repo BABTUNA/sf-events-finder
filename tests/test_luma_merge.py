@@ -88,3 +88,37 @@ def test_dedupe_prefers_luma_and_fills_summary():
     assert m.summary == "cv wrote this" and m.kind == "hackathon"
     assert m.also == ("cerebralvalley",)
     assert out["https://www.meetup.com/x"].also == ()
+
+
+DETAIL = Path(__file__).parent / "fixtures" / "luma_detail.json"
+
+
+def test_parse_detail_flattens_description_and_tags():
+    d = luma.parse_detail(json.loads(DETAIL.read_text()))
+    assert d["tags"] == ("ai",)
+    assert d["summary"].startswith("Agentic AI is breaking the assumptions")
+    assert len(d["summary"]) <= luma.SUMMARY_CHARS + 1
+    assert d["summary"].endswith((".", "…"))
+
+
+def test_enrich_only_near_events_and_reuses_known(monkeypatch):
+    detail = json.loads(DETAIL.read_text())
+    now = datetime(2026, 10, 15, tzinfo=timezone.utc)
+    soon = ev("luma", "https://luma.com/soon", start=now + luma.DETAIL_WINDOW / 2)
+    cached = ev("luma", "https://luma.com/cached", start=now + luma.DETAIL_WINDOW / 2)
+    far = ev("luma", "https://luma.com/far", start=now + luma.DETAIL_WINDOW * 2)
+    known = {cached.id: Event(**{**cached.__dict__, "summary": "from last run", "tags": ("tech",)})}
+    hit = []
+
+    def handler(request):
+        hit.append(request.url.params["url"])
+        return httpx.Response(200, json=detail)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    out = {e.url: e for e in luma.enrich([soon, cached, far], known, now=now, client=client)}
+    assert hit == ["soon"]
+    assert out["https://luma.com/soon"].tags == ("ai",) and out["https://luma.com/soon"].summary
+    assert out["https://luma.com/cached"].summary == "from last run" and out["https://luma.com/cached"].tags == ("tech",)
+    assert out["https://luma.com/far"].summary is None
+    # source tags show up as topics
+    assert "ai" in out["https://luma.com/soon"].topics

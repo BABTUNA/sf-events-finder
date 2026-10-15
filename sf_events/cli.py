@@ -4,7 +4,7 @@ import sys
 from datetime import datetime, timedelta
 
 from sf_events import jobs
-from sf_events.categorize import FORMATS, TOPICS
+from sf_events.categorize import FORMATS
 from sf_events.merge import dedupe
 from sf_events.models import PACIFIC, Event
 from sf_events.sources import SOURCES
@@ -59,8 +59,8 @@ def cmd_list(store: Store, argv: list[str]) -> int:
     p.add_argument("--all", action="store_true", help="ignore --days, show everything the sources know")
     p.add_argument("--search", help="only events whose name or summary contains this (case-insensitive)")
     p.add_argument("--format", choices=FORMATS, action="append", help="hackathon, talk, social... repeatable")
-    p.add_argument("--topic", choices=TOPICS, action="append", help="agents, infra, robotics... repeatable")
-    p.add_argument("--source", choices=sorted(SOURCES), action="append", help="limit to a source, repeatable")
+    p.add_argument("--topic", action="append", help="agents, infra, robotics, or a source tag like ai, repeatable")
+    p.add_argument("--source", choices=sorted(SOURCES), action="append", help="only events that source lists, repeatable")
     p.add_argument("--stale", action="store_true", help="read what is stored even if a source is past its interval")
     p.add_argument("--json", action="store_true", help="print json instead of the table")
     p.add_argument("--out", help="also write json here")
@@ -74,11 +74,10 @@ def cmd_list(store: Store, argv: list[str]) -> int:
 
     start = datetime.now(PACIFIC).replace(hour=0, minute=0, second=0, microsecond=0)
     end = None if args.all else start + timedelta(days=args.days)
-    events: list[Event] = []
-    for name in args.source or sorted(SOURCES):
-        events.extend(e for e in store.events(name) if e.start >= start and (end is None or e.start < end))
-
-    events = dedupe(events)
+    events = dedupe([e for e in store.events() if e.start >= start and (end is None or e.start < end)])
+    if args.source:
+        # after dedupe a merged event belongs to every source that listed it
+        events = [e for e in events if e.source in args.source or set(e.also) & set(args.source)]
 
     if args.search:
         q = args.search.lower()
@@ -112,10 +111,17 @@ def print_table(events: list[Event]) -> None:
             print(f"\n{e.start_local:%a %b %-d}")
         t = e.start_local.strftime("%-I:%M %p").rjust(8)
         tags = " ".join(f"#{x}" for x in (e.format, *e.topics) if x != "other")
-        print(f"  {t}  {e.name}  {tags}")
-        also = f"  (also on {', '.join(e.also)})" if e.also else ""
-        print(f"            {e.where}  ·  {e.url}{also}")
+        print(f"  {t}  {source_label(e):8} {e.name}  {tags}")
+        print(f"                     {e.where}  ·  {e.url}")
     print(f"\n{len(events)} events")
+
+
+SHORT = {"cerebralvalley": "cv", "luma": "luma"}
+
+
+def source_label(e: Event) -> str:
+    # "luma", "cv", or "luma+cv" when both list it
+    return "+".join(SHORT.get(x, x) for x in (e.source, *e.also))
 
 
 def _local(iso: str) -> str:

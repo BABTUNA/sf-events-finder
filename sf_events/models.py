@@ -28,6 +28,8 @@ class Event:
     host: str | None = None
     # other sources that list the same event, filled by dedupe
     also: tuple[str, ...] = ()
+    # labels the source itself put on the event, lowercased ("ai", "tech")
+    tags: tuple[str, ...] = ()
 
     @property
     def start_local(self) -> datetime:
@@ -44,7 +46,8 @@ class Event:
 
     @property
     def topics(self) -> tuple[str, ...]:
-        return event_topics(self.name, self.summary)
+        # keyword rules plus whatever the source tagged it with
+        return tuple(dict.fromkeys(event_topics(self.name, self.summary) + self.tags))
 
     @property
     def where(self) -> str:
@@ -57,6 +60,7 @@ class Event:
         # rows stored before a field existed fall back to its default
         fields = {k: d[k] for k in cls.__dataclass_fields__ if k in d}
         fields["also"] = tuple(d.get("also") or ())
+        fields["tags"] = tuple(d.get("tags") or ())
         fields["start"] = datetime.fromisoformat(d["start"])
         fields["end"] = datetime.fromisoformat(d["end"]) if d.get("end") else None
         return cls(**fields)
@@ -66,6 +70,7 @@ class Event:
         d["start"] = self.start.isoformat()
         d["end"] = self.end.isoformat() if self.end else None
         d["also"] = list(self.also)
+        d["tags"] = list(self.tags)
         d["start_local"] = self.start_local.isoformat()
         d["where"] = self.where
         d["format"] = self.format

@@ -10,6 +10,7 @@ uv run sf-events status                # when each source last ran, and whether 
 uv run sf-events --days 30             # further out
 uv run sf-events --search hackathon    # filter by name or summary
 uv run sf-events --format talk --topic agents   # categories, see below
+uv run sf-events --source cerebralvalley        # only what cerebral valley lists
 uv run sf-events --all --json > out.json
 ```
 
@@ -29,13 +30,13 @@ Thu Oct 15
 uv run sf-events-web      # http://127.0.0.1:8765
 ```
 
-One page, same data. Search, pick a range (7, 14, 30 days or everything), click format and topic chips to narrow. Chip counts show what each click would leave. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. The header shows each source with its count and last pull, and the ↻ button rescrapes it right now.
+One page, same data. Pick a source (both, Luma, Cerebral Valley), a range (7, 14, 30 days or everything), click format and topic chips to narrow. Chip counts show what each click would leave. Every row carries a pill per source that lists it, pink for Luma and blue for Cerebral Valley, and the time column stripe matches. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. The header shows each source with its count and last pull, and the ↻ button rescrapes it right now.
 
 ![web ui](docs/web.png)
 
 ## Dedupe
 
-Cerebral Valley mostly republishes Luma links, so [sf_events/merge.py](sf_events/merge.py) collapses events across sources at read time. The key is the Luma slug when the URL is a Luma URL, otherwise the URL with tracking stripped. The Luma record wins on fields, Cerebral Valley fills in the summary it wrote, and the merged event carries `also: ["cerebralvalley"]`. The UI shows a `CV` badge on anything Cerebral Valley lists, which is a decent curation signal in a list of 1,200.
+Cerebral Valley mostly republishes Luma links, so [sf_events/merge.py](sf_events/merge.py) collapses events across sources at read time. The key is the Luma slug when the URL is a Luma URL, otherwise the URL with tracking stripped. The Luma record wins on fields, Cerebral Valley fills in the summary it wrote, and the merged event carries `also: ["cerebralvalley"]`. In the UI a merged event shows both pills. In the CLI the source column reads `luma`, `cv`, or `luma+cv`. Cerebral Valley listing something is a decent curation signal in a list of 1,200.
 
 ## Categories
 
@@ -66,7 +67,7 @@ Three ways a rescrape happens:
 GET https://api.luma.com/discover/get-paginated-events?west=-122.7&east=-121.7&south=37.2&north=38.1&pagination_limit=50[&pagination_cursor=...]
 ```
 
-About 1,200 upcoming events, 50 per page, no auth. Entries carry no description, so Luma events have no summary and categories lean on the name. Roughly a quarter of the Luma events Cerebral Valley lists are not marked discoverable and never appear here, which is why both sources stay. See [sf_events/sources/luma.py](sf_events/sources/luma.py).
+About 1,200 upcoming events, 50 per page, no auth. Entries carry no description, so a second pass fetches `GET https://api.luma.com/url?url=<slug>` for events starting in the next two weeks and keeps the description (clipped to a short summary) and Luma's own category tags, which show up as topics (`ai`, `tech`, `arts & culture`). That endpoint rate limits quickly, so the pass runs three wide with backoff, and a row that misses just stays summary-less until the next run. Rows already in the store keep their summary, so each event costs one detail call ever. Roughly a quarter of the Luma events Cerebral Valley lists are not marked discoverable and never appear here, which is why both sources stay. See [sf_events/sources/luma.py](sf_events/sources/luma.py).
 
 **cerebralvalley** The events page is a Next.js app that fills itself from a public JSON API, so the scraper calls that instead of parsing HTML:
 

@@ -62,7 +62,8 @@ def api_events(days: int | None = Query(default=None, ge=1)):
     return {
         "sources": jobs.status(store),
         "formats": FORMATS,
-        "topics": TOPICS,
+        # rule topics first, then whatever tags the sources added
+        "topics": TOPICS + sorted({t for e in events for t in e.topics} - set(TOPICS)),
         "events": [e.to_dict() for e in events],
     }
 

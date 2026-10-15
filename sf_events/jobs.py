@@ -20,6 +20,9 @@ def rescrape(store: Store, name: str) -> dict:
     start = datetime.now(PACIFIC).replace(hour=0, minute=0, second=0, microsecond=0)
     try:
         events = src.fetch(start, None)
+        if src.enrich:
+            known = {e.id: e for e in store.events(name)}
+            events = src.enrich(events, known)
         added, removed = store.replace_source(name, events)
         store.finish_run(run_id, ok=True, count=len(events), added=added, removed=removed)
     except Exception as e:
