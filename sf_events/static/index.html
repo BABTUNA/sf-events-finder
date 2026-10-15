@@ -121,18 +121,19 @@
   .seg button[aria-pressed="true"] { background: var(--ink); color: var(--fog); }
 
   /* category chips: format is one-of, topics are any-of */
-  .chips { max-width: 1040px; margin: 0 auto; padding: 0 16px 10px; display: flex; flex-direction: column; gap: 6px; }
-  .chiprow { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .chips { max-width: 1040px; margin: 0 auto; padding: 0 16px 8px; display: flex; flex-direction: column; gap: 4px; }
+  .chiprow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
   .chiprow .lab { font: 500 10px/1 var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; width: 44px; }
   .chip {
     border: 1px solid var(--rule); background: transparent; color: var(--ink-2); cursor: pointer;
-    font: 500 12px/1 var(--mono); padding: 5px 9px; border-radius: 999px;
+    font: 500 11px/1 var(--mono); padding: 4px 8px; border-radius: 999px;
   }
   .chip .n { color: var(--ink-3); margin-left: 4px; }
   .chip:hover { border-color: var(--ink-3); color: var(--ink); }
   .chip[aria-pressed="true"] { background: var(--bridge-soft); border-color: var(--bridge); color: var(--bridge); }
   .chip[aria-pressed="true"] .n { color: var(--bridge); }
-  .chip:disabled { opacity: .35; cursor: default; }
+  .chip.more { border-style: dashed; color: var(--ink-3); }
+  .chip.more:hover { color: var(--ink); }
   #topics .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--fog); }
   #topics .chip[aria-pressed="true"] .n { color: var(--fog); }
   .ev.src-luma .t { border-right-color: var(--luma); }
@@ -272,7 +273,7 @@
 <script>
 (() => {
   const TZ = "America/Los_Angeles";
-  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, events: [], sources: [] };
+  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, moreTopics: false, events: [], sources: [] };
   const $ = (s) => document.querySelector(s);
   let FORMATS = [], TOPICS = [];
   const PILL = {
@@ -336,19 +337,29 @@
     return out;
   }
 
+  // how many topic chips show before the rest fold behind "more"
+  const TOPIC_FOLD = 12;
+
   function renderChips() {
     const byFormat = new Map(FORMATS.map((f) => [f, 0]));
     for (const e of visibleExcept("format")) byFormat.set(e.format, (byFormat.get(e.format) || 0) + 1);
-    $("#formats").innerHTML = `<span class="lab">format</span>` + FORMATS.map((f) => {
-      const n = byFormat.get(f) || 0;
-      return `<button class="chip" data-format="${f}" aria-pressed="${state.format === f}" ${n || state.format === f ? "" : "disabled"}>${f}<span class="n">${n}</span></button>`;
-    }).join("");
-    const byTopic = new Map(TOPICS.map((t) => [t, 0]));
+    // chips with nothing behind them go away instead of sitting greyed out
+    $("#formats").innerHTML = `<span class="lab">format</span>` + FORMATS
+      .filter((f) => byFormat.get(f) || state.format === f)
+      .map((f) => `<button class="chip" data-format="${f}" aria-pressed="${state.format === f}">${f}<span class="n">${byFormat.get(f) || 0}</span></button>`)
+      .join("");
+
+    const byTopic = new Map();
     for (const e of visibleExcept("topics")) for (const t of e.topics) byTopic.set(t, (byTopic.get(t) || 0) + 1);
-    $("#topics").innerHTML = `<span class="lab">topic</span>` + TOPICS.map((t) => {
-      const n = byTopic.get(t) || 0;
-      return `<button class="chip" data-topic="${t}" aria-pressed="${state.topics.has(t)}" ${n || state.topics.has(t) ? "" : "disabled"}>${t}<span class="n">${n}</span></button>`;
-    }).join("");
+    // biggest first, active ones always shown, the long tail folds
+    const all = [...new Set([...TOPICS, ...byTopic.keys()])]
+      .filter((t) => byTopic.get(t) || state.topics.has(t))
+      .sort((a, b) => (byTopic.get(b) || 0) - (byTopic.get(a) || 0) || a.localeCompare(b));
+    const shown = state.moreTopics ? all : all.filter((t, i) => i < TOPIC_FOLD || state.topics.has(t));
+    const hidden = all.length - shown.length;
+    $("#topics").innerHTML = `<span class="lab">topic</span>` + shown
+      .map((t) => `<button class="chip" data-topic="${t}" aria-pressed="${state.topics.has(t)}">${esc(t)}<span class="n">${byTopic.get(t) || 0}</span></button>`)
+      .join("") + (hidden > 0 ? `<button class="chip more" data-more="1">+${hidden} more</button>` : state.moreTopics && all.length > TOPIC_FOLD ? `<button class="chip more" data-more="0">less</button>` : "");
   }
 
   function render() {
@@ -465,6 +476,8 @@
     render();
   });
   $("#topics").addEventListener("click", (ev) => {
+    const m = ev.target.closest("button[data-more]");
+    if (m) { state.moreTopics = m.dataset.more === "1"; renderChips(); return; }
     const b = ev.target.closest("button[data-topic]"); if (!b) return;
     const t = b.dataset.topic;
     state.topics.has(t) ? state.topics.delete(t) : state.topics.add(t);
