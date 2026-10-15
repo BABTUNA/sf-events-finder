@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SF events</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* sf fog, with the bridge for the one accent */
+    --fog: #e6eaee;
+    --fog-2: #d9dee4;
+    --card: #f4f6f8;
+    --ink: #14202b;
+    --ink-2: #4a5866;
+    --ink-3: #8a96a3;
+    --rule: #c3cad2;
+    --bridge: #d0401f;
+    --bridge-soft: rgba(208, 64, 31, 0.12);
+    --live: #1f8a4c;
+    --display: "Barlow Condensed", "Arial Narrow", sans-serif;
+    --body: "IBM Plex Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fog: #0f161d;
+      --fog-2: #182129;
+      --card: #141d25;
+      --ink: #e7ecf0;
+      --ink-2: #a6b2bd;
+      --ink-3: #6b7884;
+      --rule: #2a3640;
+      --bridge: #ef5a30;
+      --bridge-soft: rgba(239, 90, 48, 0.16);
+      --live: #4ccc7f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fog: #0f161d; --fog-2: #182129; --card: #141d25; --ink: #e7ecf0; --ink-2: #a6b2bd;
+    --ink-3: #6b7884; --rule: #2a3640; --bridge: #ef5a30; --bridge-soft: rgba(239, 90, 48, 0.16); --live: #4ccc7f;
+  }
+
+  * { box-sizing: border-box; }
+  html { background: var(--fog); }
+  body {
+    margin: 0;
+    background: var(--fog);
+    color: var(--ink);
+    font: 15px/1.45 var(--body);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--bridge); outline-offset: 2px; }
+
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px 80px; }
+
+  /* top bar */
+  header {
+    position: sticky; top: 0; z-index: 5;
+    background: color-mix(in srgb, var(--fog) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .bar {
+    max-width: 1040px; margin: 0 auto; padding: 14px 16px 10px;
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 18px;
+  }
+  h1 {
+    margin: 0 auto 0 0;
+    font: 600 34px/0.9 var(--display);
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+  }
+  h1 small { display: block; font: 500 12px/1.4 var(--mono); color: var(--ink-3); text-transform: none; letter-spacing: 0; margin-top: 4px; }
+  .search {
+    flex: 1 1 220px; max-width: 360px;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 6px;
+    padding: 7px 10px; font: 14px var(--body); color: var(--ink);
+  }
+  .search::placeholder { color: var(--ink-3); }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--card); }
+  .seg button {
+    border: 0; background: transparent; color: var(--ink-2);
+    font: 500 12px var(--mono); padding: 8px 11px; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--fog); }
+
+  /* the density rail: one bar per day, height is how busy */
+  .rail {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+    gap: 3px; align-items: end;
+    height: 92px; margin: 22px 0 6px; padding-bottom: 22px; position: relative;
+  }
+  .rail button {
+    position: relative; border: 0; padding: 0; cursor: pointer; background: transparent;
+    height: 100%; display: flex; flex-direction: column; justify-content: flex-end;
+  }
+  .rail .bar-fill { background: var(--fog-2); border-radius: 2px 2px 0 0; min-height: 3px; transition: height .3s ease; }
+  .rail button:hover .bar-fill, .rail button.on .bar-fill { background: var(--bridge); }
+  .rail button.weekend .bar-fill { background: var(--rule); }
+  .rail button.weekend:hover .bar-fill { background: var(--bridge); }
+  .rail .lbl {
+    position: absolute; left: 0; right: 0; bottom: -22px;
+    font: 500 10px/1 var(--mono); color: var(--ink-3); text-align: center; white-space: nowrap; overflow: hidden;
+  }
+  .rail button.today .lbl { color: var(--bridge); }
+  .rail .n {
+    position: absolute; left: 0; right: 0; top: -14px;
+    font: 500 10px/1 var(--mono); color: var(--ink-2); text-align: center; opacity: 0; transition: opacity .15s;
+  }
+  .rail button:hover .n, .rail button.on .n { opacity: 1; }
+  .rail-cap { font: 400 12px var(--mono); color: var(--ink-3); margin: 0 0 18px; }
+  /* dense rails (30d, all) only label mondays, so let those labels spill right */
+  .rail.dense .lbl { text-align: left; overflow: visible; }
+  @media (max-width: 640px) { .rail .lbl { font-size: 9px; } .rail:not(.dense) button:nth-child(2n) .lbl { display: none; } }
+
+  /* days */
+  .day { margin-top: 34px; scroll-margin-top: 110px; }
+  .day h2 {
+    display: flex; align-items: baseline; gap: 12px; margin: 0 0 6px;
+    font: 600 26px/1 var(--display); text-transform: uppercase; letter-spacing: 0.02em;
+  }
+  .day h2 .count { font: 400 12px var(--mono); color: var(--ink-3); }
+  .day h2 .today-tag { font: 500 11px var(--mono); color: var(--bridge); background: var(--bridge-soft); padding: 2px 6px; border-radius: 3px; }
+  .day h2::after { content: ""; flex: 1; border-top: 1px solid var(--rule); transform: translateY(-6px); }
+
+  .ev {
+    display: grid; grid-template-columns: 76px 1fr auto; gap: 2px 14px;
+    padding: 10px 8px 10px 0; border-bottom: 1px solid var(--rule);
+    text-decoration: none; position: relative;
+  }
+  .ev:hover { background: var(--card); }
+  .ev:hover .name { color: var(--bridge); }
+  .ev .t { grid-row: span 2; font: 500 13px/1.5 var(--mono); color: var(--ink-2); text-align: right; padding-right: 6px; border-right: 2px solid var(--rule); }
+  .ev.live .t { border-right-color: var(--live); }
+  .ev .t .live-dot { display: block; font-size: 10px; color: var(--live); letter-spacing: .08em; }
+  .ev .name { font-weight: 600; font-size: 15px; line-height: 1.3; }
+  .ev .kind { font: 500 10px/1 var(--mono); color: var(--bridge); background: var(--bridge-soft); padding: 3px 5px; border-radius: 3px; vertical-align: 2px; margin-left: 6px; text-transform: uppercase; }
+  .ev .host { grid-row: span 2; align-self: start; font: 400 12px/1.3 var(--mono); color: var(--ink-3); white-space: nowrap; padding-top: 2px; }
+  .ev .host::after { content: " ↗"; }
+  .ev .sub { color: var(--ink-2); font-size: 13.5px; }
+  .ev .where { color: var(--ink); display: block; }
+  .ev .sum { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .ev:hover .sum { -webkit-line-clamp: unset; }
+  @media (max-width: 640px) {
+    .ev { grid-template-columns: 64px 1fr; }
+    .ev .t { grid-row: span 3; font-size: 12px; }
+    .ev .name, .ev .sub, .ev .host { grid-column: 2; }
+    .ev .host { grid-row: auto; padding-top: 4px; }
+  }
+
+  .empty { margin: 60px 0; text-align: center; color: var(--ink-2); font-size: 14px; }
+  .empty b { display: block; font: 600 28px var(--display); text-transform: uppercase; color: var(--ink); margin-bottom: 6px; }
+  .err { border-left: 3px solid var(--bridge); padding: 10px 14px; margin-top: 30px; color: var(--ink-2); font-size: 14px; }
+  .err code { font: 12px var(--mono); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>SF events <small id="status">loading</small></h1>
+    <input class="search" id="q" type="search" placeholder="Search names, places, summaries" aria-label="Search events" autocomplete="off">
+    <div class="seg" id="range" role="group" aria-label="How far ahead">
+      <button data-days="7" aria-pressed="true">7d</button>
+      <button data-days="14" aria-pressed="false">14d</button>
+      <button data-days="30" aria-pressed="false">30d</button>
+      <button data-days="0" aria-pressed="false">all</button>
+    </div>
+    <div class="seg" id="kind" role="group" aria-label="Kind">
+      <button data-kind="" aria-pressed="true">everything</button>
+      <button data-kind="hackathon" aria-pressed="false">hackathons</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <nav class="rail" id="rail" aria-label="Events per day"></nav>
+  <p class="rail-cap" id="railcap"></p>
+  <div id="list"></div>
+</main>
+
+<script>
+(() => {
+  const TZ = "America/Los_Angeles";
+  const state = { days: 7, kind: "", q: "", events: [], fetchedAt: null };
+  const $ = (s) => document.querySelector(s);
+
+  // ymd in pacific so grouping matches what the cli prints
+  const ymd = (iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: TZ });
+  const todayYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: TZ });
+  const fmt = (iso, opt) => new Date(iso).toLocaleString("en-US", { timeZone: TZ, ...opt });
+  const host = (url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
+  const addDays = (ymdStr, n) => {
+    const d = new Date(ymdStr + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  async function load() {
+    $("#status").textContent = "loading";
+    try {
+      const r = await fetch("/api/events");
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.detail || `${r.status} ${r.statusText}`);
+      state.events = body.events;
+      state.fetchedAt = body.fetched_at;
+      render();
+    } catch (e) {
+      $("#status").textContent = "could not load";
+      $("#list").innerHTML = `<div class="err">Could not load events. Is the server running and online? <code>uv run sf-events-web</code><br><code>${esc(e.message)}</code></div>`;
+    }
+  }
+
+  function visible() {
+    const today = todayYmd();
+    const end = state.days ? addDays(today, state.days) : null;
+    const q = state.q.trim().toLowerCase();
+    return state.events.filter((e) => {
+      const d = ymd(e.start);
+      if (end && d >= end) return false;
+      if (state.kind && e.kind !== state.kind) return false;
+      if (q) {
+        const hay = `${e.name} ${e.where || ""} ${e.summary || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  function render() {
+    const today = todayYmd();
+    const evs = visible();
+    const byDay = new Map();
+    for (const e of evs) {
+      const d = ymd(e.start);
+      if (!byDay.has(d)) byDay.set(d, []);
+      byDay.get(d).push(e);
+    }
+
+    // rail covers the whole chosen range, including empty days, so gaps are visible
+    const span = state.days || Math.max(1, Math.round((new Date([...byDay.keys()].pop() || today) - new Date(today)) / 864e5) + 1);
+    const railDays = Math.min(span, 60);
+    const max = Math.max(1, ...Array.from({ length: railDays }, (_, i) => (byDay.get(addDays(today, i)) || []).length));
+    $("#rail").classList.toggle("dense", railDays > 21);
+    $("#rail").innerHTML = Array.from({ length: railDays }, (_, i) => {
+      const d = addDays(today, i);
+      const n = (byDay.get(d) || []).length;
+      const dt = new Date(d + "T12:00:00");
+      const dow = dt.getDay();
+      const cls = [n ? "" : "none", dow === 0 || dow === 6 ? "weekend" : "", d === today ? "today" : ""].join(" ");
+      // dense rails label mondays, plus today unless a monday label is about to land on top of it
+      const dense = railDays > 21;
+      const showLbl = dense ? dow === 1 || (i === 0 && (8 - dow) % 7 >= 4) : true;
+      const lbl = !showLbl ? "" : dense ? dt.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : dt.toLocaleDateString("en-US", { weekday: "short", day: "numeric" });
+      return `<button class="${cls}" data-day="${d}" ${n ? "" : "disabled"} aria-label="${n} events on ${d}">
+        <span class="n">${n}</span>
+        <span class="bar-fill" style="height:${Math.round((n / max) * 100)}%"></span>
+        <span class="lbl">${lbl}</span></button>`;
+    }).join("");
+
+    const now = Date.now();
+    $("#list").innerHTML = [...byDay.entries()].map(([d, list]) => {
+      const dt = new Date(d + "T12:00:00");
+      return `<section class="day" id="d-${d}">
+        <h2>${dt.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+          ${d === today ? '<span class="today-tag">today</span>' : ""}
+          <span class="count">${list.length}</span></h2>
+        ${list.map((e) => {
+          const live = new Date(e.start).getTime() <= now && e.end && new Date(e.end).getTime() > now;
+          return `<a class="ev ${live ? "live" : ""}" href="${e.url}" target="_blank" rel="noopener">
+            <span class="t">${fmt(e.start, { hour: "numeric", minute: "2-digit" })}${live ? '<span class="live-dot">LIVE</span>' : ""}</span>
+            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}</span>
+            <span class="host">${esc(host(e.url))}</span>
+            <span class="sub"><span class="where">${esc(e.where || "")}</span>${e.summary ? `<span class="sum">${esc(e.summary)}</span>` : ""}</span>
+          </a>`;
+        }).join("")}
+      </section>`;
+    }).join("") || `<div class="empty"><b>Nothing here</b>Try a wider range or clear the search.</div>`;
+
+    const span2 = state.days ? `next ${state.days} days` : "everything upcoming";
+    $("#railcap").textContent = `${evs.length} events, ${span2}. Bars are events per day, tap one to jump.`;
+    $("#status").textContent = state.fetchedAt ? `${state.events.length} upcoming · pulled ${fmt(state.fetchedAt, { hour: "numeric", minute: "2-digit" })}` : "";
+  }
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function seg(id, key, parse) {
+    $(id).addEventListener("click", (ev) => {
+      const b = ev.target.closest("button"); if (!b) return;
+      for (const x of $(id).children) x.setAttribute("aria-pressed", String(x === b));
+      state[key] = parse(b.dataset[key]);
+      render();
+    });
+  }
+  seg("#range", "days", Number);
+  seg("#kind", "kind", String);
+  $("#q").addEventListener("input", (ev) => { state.q = ev.target.value; render(); });
+  $("#rail").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-day]"); if (!b) return;
+    for (const x of $("#rail").children) x.classList.toggle("on", x === b);
+    document.getElementById("d-" + b.dataset.day)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

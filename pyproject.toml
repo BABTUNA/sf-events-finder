@@ -8,11 +8,14 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.115",
     "httpx>=0.28.1",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]
 sf-events = "sf_events.cli:main"
+sf-events-web = "sf_events.web:main"
 
 [dependency-groups]
 dev = [

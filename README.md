@@ -20,6 +20,16 @@ Thu Oct 15
             San Francisco, CA  ·  https://cerebralvalley.ai/e/crusoe-recursive-agents-hackathon
 ```
 
+## Web UI
+
+```bash
+uv run sf-events-web      # http://127.0.0.1:8765
+```
+
+One page, same data. Search, pick a range (7, 14, 30 days or everything), filter to hackathons. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. Results are cached for ten minutes so reloading does not hammer the source.
+
+![web ui](docs/web.png)
+
 ## Sources
 
 **cerebralvalley** The events page is a Next.js app that fills itself from a public JSON API, so the scraper calls that instead of parsing HTML:
