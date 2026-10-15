@@ -38,6 +38,11 @@ create table if not exists runs (
 create index if not exists runs_source on runs(source, id);
 """
 
+# columns added after the first release, applied if missing
+MIGRATIONS = [
+    "alter table runs add column job text not null default 'scrape'",
+]
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -49,6 +54,10 @@ class Store:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
             c.executescript(SCHEMA)
+            have = {r["name"] for r in c.execute("pragma table_info(runs)")}
+            for m in MIGRATIONS:
+                if m.split(" add column ")[1].split()[0] not in have:
+                    c.execute(m)
 
     def _conn(self) -> sqlite3.Connection:
         c = sqlite3.connect(self.path, timeout=10)
@@ -73,6 +82,15 @@ class Store:
                 c.executemany("delete from events where id = ?", [(i,) for i in gone])
         return len(ids - before), len(gone)
 
+    def upsert(self, events: list[Event]) -> None:
+        """rewrite these rows in place, nothing added or removed"""
+        now = _now()
+        with self._conn() as c:
+            c.executemany(
+                "update events set data = ?, last_seen = ? where id = ?",
+                [(json.dumps(e.to_dict()), now, e.id) for e in events],
+            )
+
     def events(self, source: str | None = None) -> list[Event]:
         q = "select data from events" + (" where source = ?" if source else "")
         with self._conn() as c:
@@ -81,9 +99,9 @@ class Store:
 
     # runs
 
-    def start_run(self, source: str) -> int:
+    def start_run(self, source: str, job: str = "scrape") -> int:
         with self._conn() as c:
-            cur = c.execute("insert into runs (source, started_at) values (?, ?)", (source, _now()))
+            cur = c.execute("insert into runs (source, job, started_at) values (?, ?, ?)", (source, job, _now()))
             return cur.lastrowid
 
     def finish_run(self, run_id: int, *, ok: bool, count: int = 0, added: int = 0, removed: int = 0, error: str | None = None) -> None:
@@ -93,11 +111,21 @@ class Store:
                 (_now(), int(ok), count, added, removed, error, run_id),
             )
 
-    def last_run(self, source: str, ok_only: bool = False) -> dict | None:
-        q = "select * from runs where source = ? and finished_at is not null" + (" and ok = 1" if ok_only else "") + " order by id desc limit 1"
+    def last_run(self, source: str, ok_only: bool = False, job: str = "scrape") -> dict | None:
+        q = "select * from runs where source = ? and job = ? and finished_at is not null" + (" and ok = 1" if ok_only else "") + " order by id desc limit 1"
         with self._conn() as c:
-            r = c.execute(q, (source,)).fetchone()
+            r = c.execute(q, (source, job)).fetchone()
         return dict(r) if r else None
+
+    def enrichment(self, source: str, before: datetime) -> tuple[int, int]:
+        """(rows with a summary, rows) among this source's events starting before `before`"""
+        with self._conn() as c:
+            r = c.execute(
+                """select sum(json_extract(data, '$.summary') is not null), count(*) from events
+                   where source = ? and json_extract(data, '$.start') < ?""",
+                (source, before.isoformat()),
+            ).fetchone()
+        return int(r[0] or 0), int(r[1] or 0)
 
     def count(self, source: str) -> int:
         with self._conn() as c:

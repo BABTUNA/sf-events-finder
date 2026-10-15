@@ -16,6 +16,10 @@ class Source:
     # optional second pass after fetch: enrich(events, known_by_id) -> events
     # gets the rows already stored so it can skip work it did last time
     enrich: Optional[Callable[[list[Event], dict[str, Event]], list[Event]]] = None
+    # how often the enrich step runs on its own, between full scrapes
+    enrich_every: timedelta = timedelta(minutes=6)
+    # how far ahead enrichment reaches, for the coverage number in status
+    enrich_window: timedelta = timedelta(days=14)
 
 
 # luma and x slot in here when they land, each with its own cadence

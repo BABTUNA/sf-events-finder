@@ -62,3 +62,46 @@ def test_due_after_interval(store, fake_source):
     jobs.rescrape(store, "test")
     later = datetime.now(timezone.utc) + timedelta(minutes=31)
     assert jobs.is_due(store, SOURCES["test"], now=later)
+
+
+def test_enrich_job_upserts_and_tracks_coverage(store, monkeypatch):
+    from dataclasses import replace
+
+    def fetch(start, end):
+        return [ev("a"), ev("b")]
+
+    passes = {"n": 0}
+
+    def enrich(events, known):
+        # first pass describes one row, second pass the other, like a budget would
+        passes["n"] += 1
+        target = events[passes["n"] - 1]
+        return [replace(e, summary="described") if e.id == target.id else e for e in events]
+
+    src = Source("test", fetch, timedelta(minutes=30), enrich=enrich, enrich_every=timedelta(minutes=6))
+    monkeypatch.setitem(SOURCES, "test", src)
+    # scrape runs enrich once too, so one row is already described
+    jobs.rescrape(store, "test")
+    far = datetime.now(timezone.utc) + timedelta(days=30)
+    assert store.enrichment("test", far) == (1, 2)
+    assert jobs.is_enrich_due(store, src)
+
+    run = jobs.enrich(store, "test")
+    assert run["ok"] and run["count"] == 1 and run["job"] == "enrich"
+    assert store.enrichment("test", far) == (2, 2)
+    # everything described, nothing left to do
+    assert not jobs.is_enrich_due(store, src)
+    # the scrape log is untouched by enrich runs
+    assert store.last_run("test")["job"] == "scrape"
+
+
+def test_enrich_due_respects_interval(store, monkeypatch):
+    def fetch(start, end):
+        return [ev("a")]
+
+    src = Source("test", fetch, timedelta(minutes=30), enrich=lambda evs, known: evs, enrich_every=timedelta(minutes=6))
+    monkeypatch.setitem(SOURCES, "test", src)
+    store.replace_source("test", [ev("a")])
+    jobs.enrich(store, "test")
+    assert not jobs.is_enrich_due(store, src)
+    assert jobs.is_enrich_due(store, src, now=datetime.now(timezone.utc) + timedelta(minutes=7))

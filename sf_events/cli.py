@@ -10,7 +10,7 @@ from sf_events.models import PACIFIC, Event
 from sf_events.sources import SOURCES
 from sf_events.store import Store
 
-COMMANDS = ("list", "rescrape", "status")
+COMMANDS = ("list", "rescrape", "enrich", "status")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     # `sf-events` alone lists, so the subcommand is optional
     cmd = argv.pop(0) if argv and argv[0] in COMMANDS else "list"
     store = Store()
-    return {"list": cmd_list, "rescrape": cmd_rescrape, "status": cmd_status}[cmd](store, argv)
+    return {"list": cmd_list, "rescrape": cmd_rescrape, "enrich": cmd_enrich, "status": cmd_status}[cmd](store, argv)
 
 
 def cmd_rescrape(store: Store, argv: list[str]) -> int:
@@ -30,6 +30,19 @@ def cmd_rescrape(store: Store, argv: list[str]) -> int:
         run = jobs.rescrape(store, name)
         ok &= bool(run["ok"])
         print(_run_line(run))
+    return 0 if ok else 1
+
+
+def cmd_enrich(store: Store, argv: list[str]) -> int:
+    p = argparse.ArgumentParser(prog="sf-events enrich", description="one bounded description pass over stored rows")
+    enrichable = sorted(n for n, s in SOURCES.items() if s.enrich)
+    p.add_argument("source", nargs="*", choices=enrichable, help="default: every source that has an enrich step")
+    args = p.parse_args(argv)
+    ok = True
+    for name in args.source or enrichable:
+        run = jobs.enrich(store, name)
+        ok &= bool(run["ok"])
+        print(f"{name}: {run['count']} rows enriched" if run["ok"] else f"{name}: failed, {run['error']}")
     return 0 if ok else 1
 
 
@@ -49,6 +62,10 @@ def cmd_status(store: Store, argv: list[str]) -> int:
             line += "   due"
         if s["last_run_ok"] is False:
             line += f"\n{'':16} last run failed: {s['last_error']}"
+        if s["enrichment"]:
+            e = s["enrichment"]
+            when = _local(e["last_run_at"]) if e["last_run_at"] else "never"
+            line += f"\n{'':16} descriptions {e['done']}/{e['total']} within {e['window_days']}d   last pass {when}   every {e['every_minutes']}m"
         print(line)
     return 0
 

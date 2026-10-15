@@ -6,7 +6,8 @@ One list of upcoming AI and tech events in the SF Bay Area. Cerebral Valley and 
 uv sync
 uv run sf-events                       # next 7 days, grouped by day (pulls first if the store is stale)
 uv run sf-events rescrape              # pull every source now
-uv run sf-events status                # when each source last ran, and whether it failed
+uv run sf-events enrich                # one description pass for sources that have one (luma)
+uv run sf-events status                # when each source last ran, description coverage, failures
 uv run sf-events --days 30             # further out
 uv run sf-events --search hackathon    # filter by name or summary
 uv run sf-events --format talk --topic agents   # categories, see below
@@ -51,6 +52,8 @@ On a 236 event pull, 13 fell through to other. If that gets annoying the next st
 
 Scraped events live in `data/events.db` (SQLite, gitignored, override with `SF_EVENTS_DB`). Each source has its own interval in [sf_events/sources/__init__.py](sf_events/sources/__init__.py), 30 minutes for Cerebral Valley. A rescrape replaces that source's rows with what it returned and logs a row in `runs` with count, added, removed, and any error. A failed pull keeps the old rows.
 
+Enrichment is a second, cheaper job per source: it rewrites stored rows with descriptions and tags, never adds or removes, and has its own interval (6 minutes) and its own rows in `runs` with `job = 'enrich'`. It stops scheduling itself once every row in the window has a summary.
+
 Three ways a rescrape happens:
 
 - `sf-events rescrape [source]` runs one now.
@@ -67,7 +70,7 @@ Three ways a rescrape happens:
 GET https://api.luma.com/discover/get-paginated-events?west=-122.7&east=-121.7&south=37.2&north=38.1&pagination_limit=50[&pagination_cursor=...]
 ```
 
-About 1,200 upcoming events, 50 per page, no auth. Entries carry no description, so a second pass fetches `GET https://api.luma.com/url?url=<slug>` for events starting in the next two weeks and keeps the description (clipped to a short summary) and Luma's own category tags, which show up as topics (`ai`, `tech`, `arts & culture`). That endpoint allows about 70 calls before a 429 and then blocks for around five minutes, so each run fetches at most 60, soonest events first, and stops at the first 429. Rows already in the store keep their summary, so each event costs one detail call ever and the two-week window fills in over the hourly runs. Roughly a quarter of the Luma events Cerebral Valley lists are not marked discoverable and never appear here, which is why both sources stay. See [sf_events/sources/luma.py](sf_events/sources/luma.py).
+About 1,200 upcoming events, 50 per page, no auth. Entries carry no description, so a second pass fetches `GET https://api.luma.com/url?url=<slug>` for events starting in the next two weeks and keeps the description (clipped to a short summary) and Luma's own category tags, which show up as topics (`ai`, `tech`, `arts & culture`). That endpoint allows about 70 calls before a 429 and then blocks for around five minutes, so each pass fetches at most 60, soonest events first, and stops at the first 429. Rows already in the store keep their summary, so each event costs one detail call ever. The pass runs as its own job every 6 minutes (`sf-events enrich`, or the web server's scheduler), so the two-week window fills in within about an hour of a fresh start. Roughly a quarter of the Luma events Cerebral Valley lists are not marked discoverable and never appear here, which is why both sources stay. See [sf_events/sources/luma.py](sf_events/sources/luma.py).
 
 **cerebralvalley** The events page is a Next.js app that fills itself from a public JSON API, so the scraper calls that instead of parsing HTML:
 

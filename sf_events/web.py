@@ -3,7 +3,8 @@
     uv run sf-events-web          # http://127.0.0.1:8765
 
 reads come from sqlite. a background thread rescrapes each source once it
-is past its interval, and the ui can ask for a rescrape right now
+is past its interval, runs the enrich pass on its own shorter cadence, and
+the ui can ask for a rescrape right now
 """
 
 import threading
@@ -35,6 +36,7 @@ def _scheduler(stop: threading.Event) -> None:
     while not stop.is_set():
         with _lock:
             jobs.rescrape_due(store)
+            jobs.enrich_due(store)
         stop.wait(TICK)
 
 

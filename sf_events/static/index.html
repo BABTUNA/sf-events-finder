@@ -384,9 +384,15 @@
     $("#sources").innerHTML = state.sources.map((s) => {
       const failed = s.last_run_ok === false;
       const at = failed ? "pull failed" : s.last_ok_at ? `pulled ${fmt(s.last_ok_at, { hour: "numeric", minute: "2-digit" })}` : "never pulled";
-      const title = failed ? s.last_error : `rescrapes every ${s.every_minutes} min${s.next_due ? `, next ${fmt(s.next_due, { hour: "numeric", minute: "2-digit" })}` : ""}`;
+      let title = failed ? s.last_error : `rescrapes every ${s.every_minutes} min${s.next_due ? `, next ${fmt(s.next_due, { hour: "numeric", minute: "2-digit" })}` : ""}`;
+      let desc = "";
+      if (s.enrichment) {
+        const e = s.enrichment;
+        desc = `<span class="at">· ${e.done}/${e.total} described</span>`;
+        title += `. descriptions for the next ${e.window_days} days: ${e.done} of ${e.total}, a pass every ${e.every_minutes} min`;
+      }
       return `<span class="src ${failed ? "failed" : ""} ${s.due ? "stale" : ""}" title="${esc(title || "")}">
-        <span class="nm">${esc(s.source)}</span><span>${s.count}</span><span class="at">${at}</span>
+        <span class="nm">${esc(s.source)}</span><span>${s.count}</span><span class="at">${at}</span>${desc}
         <button data-rescrape="${esc(s.source)}" aria-label="Rescrape ${esc(s.source)} now" title="Rescrape now">↻</button></span>`;
     }).join("");
   }
