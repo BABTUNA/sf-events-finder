@@ -97,8 +97,10 @@ class GuestList(BaseModel):
 @app.post("/api/guests")
 def api_post_guests(body: GuestList):
     key = _key_for_url(body.page_url)
-    analysis = people.analyze(body.guests)
-    store.set_guests(key, _event_url(body.page_url), body.page_url, body.guests, analysis)
+    # luma rows arrive without bios, the public profile api has them
+    guests = people.enrich_luma(body.guests) if key.startswith("luma:") else body.guests
+    analysis = people.analyze(guests)
+    store.set_guests(key, _event_url(body.page_url), body.page_url, guests, analysis)
     known = any(dedupe_key(e) == key for e in store.events())
     return {"key": key, "known_event": known, **analysis}
 

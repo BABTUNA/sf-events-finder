@@ -28,23 +28,26 @@ window.sfEventsExtract = (() => {
     return out;
   }
 
-  // luma: the guest dialog lists rows that link to /user/... profiles. the
-  // row's first text is the name, anything after it is the subtitle. best
-  // effort until checked against a logged in page
+  // luma: the guest modal lists rows of <a href="/user/..."> with the name in
+  // the avatar alt ("Profile picture for NAME") and a sibling block of social
+  // links. no bios here, the server fills those from luma's public profile api
   function luma(root = document) {
-    const scope = root.querySelector('[role="dialog"]') || root;
+    const scope = root.querySelector(".lux-modal-body") || root.querySelector('[role="dialog"]') || root;
     const rows = scope.querySelectorAll('a[href^="/user/"], a[href*="luma.com/user/"], a[href*="lu.ma/user/"]');
     const out = [];
     const seen = new Set();
     for (const a of rows) {
-      const texts = [...a.querySelectorAll("div, span")].map((n) => clean(n.textContent)).filter(Boolean);
-      const name = texts[0] || clean(a.textContent);
+      const img = a.querySelector("img[alt]");
+      const alt = clean(img?.getAttribute("alt")).replace(/^profile picture for\s+/i, "");
+      const name = alt || clean(a.querySelector(".name")?.textContent) || clean(a.textContent);
       if (!name) continue;
-      const bio = texts.find((t) => t !== name && !t.startsWith(name)) || "";
-      const profile = a.href;
+      const profile = new URL(a.getAttribute("href"), "https://luma.com/").href;
       if (seen.has(profile)) continue;
       seen.add(profile);
-      out.push({ name, bio, links: [profile] });
+      const socials = [...(a.parentElement?.querySelectorAll('a[href^="http"]') || [])]
+        .map((x) => x.href)
+        .filter((h) => !/luma\.com|lu\.ma/.test(h));
+      out.push({ name, bio: "", links: [profile, ...socials] });
     }
     return out;
   }

@@ -54,3 +54,55 @@ def test_post_guests_endpoint(tmp_path):
     r = client.get("/api/guests/partiful:STg1eJrPTO14OpwysakA")
     assert r.status_code == 200 and len(r.json()["guests"]) == 7
     assert r.json()["event_url"] == "https://partiful.com/e/STg1eJrPTO14OpwysakA"
+
+
+def test_enrich_luma_fills_bio_and_links_from_profile_api():
+    import httpx
+
+    profiles = {
+        "joeljussila": {"event_hosted_count": 6, "event_attended_count": 90, "user": {"bio_short": "ceo at SILTA", "linkedin_handle": "/in/joel-jussila", "twitter_handle": "JoelJussila", "website": "https://www.siltahouse.com/home"}},
+        "aaronshlin": {"event_hosted_count": 0, "event_attended_count": 9, "user": {"bio_short": "", "linkedin_handle": "/in/aaronshlin"}},
+    }
+    hit = []
+
+    def handler(request):
+        u = request.url.params["username"]
+        hit.append(u)
+        return httpx.Response(200, json=profiles[u]) if u in profiles else httpx.Response(404, json={})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    guests = [
+        {"name": "Joel Jussila", "bio": "", "links": ["https://luma.com/user/joeljussila", "https://instagram.com/jussilajoel"]},
+        {"name": "Aaron Lin", "bio": "", "links": ["https://luma.com/user/aaronshlin"]},
+        {"name": "Already", "bio": "Partner at a16z", "links": ["https://luma.com/user/x"]},
+        {"name": "No link", "bio": "", "links": []},
+    ]
+    out = people.enrich_luma(guests, client=client)
+    assert sorted(hit) == ["aaronshlin", "joeljussila"]
+    joel = out[0]
+    assert joel["bio"] == "ceo at SILTA" and joel["hosted"] == 6
+    assert "https://www.linkedin.com/in/joel-jussila" in joel["links"] and "https://x.com/JoelJussila" in joel["links"]
+    assert out[2]["bio"] == "Partner at a16z"
+
+    tagged = {t["name"]: t for t in (people.tag_guest(g) for g in out)}
+    assert "founder" in tagged["Joel Jussila"]["tags"] and "host" in tagged["Joel Jussila"]["tags"]
+    assert tagged["Aaron Lin"]["tags"] == [] and tagged["Aaron Lin"]["weight"] == 1
+
+
+def test_enrich_luma_stops_at_rate_limit():
+    import httpx
+
+    hit = []
+
+    def handler(request):
+        hit.append(1)
+        return httpx.Response(429, json={"code": "api/rate-limit"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    guests = [{"name": f"g{i}", "bio": "", "links": [f"https://luma.com/user/u{i}"]} for i in range(10)]
+    people.PROFILE_WORKERS, saved = 1, people.PROFILE_WORKERS
+    try:
+        out = people.enrich_luma(guests, client=client)
+    finally:
+        people.PROFILE_WORKERS = saved
+    assert len(hit) == 1 and all(not g["bio"] for g in out)
