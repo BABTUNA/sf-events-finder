@@ -4,7 +4,9 @@ One list of upcoming AI events in the SF Bay Area, pulled live. Cerebral Valley 
 
 ```bash
 uv sync
-uv run sf-events                       # next 7 days, grouped by day
+uv run sf-events                       # next 7 days, grouped by day (pulls first if the store is stale)
+uv run sf-events rescrape              # pull every source now
+uv run sf-events status                # when each source last ran, and whether it failed
 uv run sf-events --days 30             # further out
 uv run sf-events --search hackathon    # filter by name or summary
 uv run sf-events --format talk --topic agents   # categories, see below
@@ -27,7 +29,7 @@ Thu Oct 15
 uv run sf-events-web      # http://127.0.0.1:8765
 ```
 
-One page, same data. Search, pick a range (7, 14, 30 days or everything), click format and topic chips to narrow. Chip counts show what each click would leave. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. Results are cached for ten minutes so reloading does not hammer the source.
+One page, same data. Search, pick a range (7, 14, 30 days or everything), click format and topic chips to narrow. Chip counts show what each click would leave. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. The header shows each source with its count and last pull, and the ↻ button rescrapes it right now.
 
 ![web ui](docs/web.png)
 
@@ -40,6 +42,18 @@ Cerebral Valley only labels its own hackathons, so categories are keyword rules 
 
 On a 236 event pull, 13 fell through to other. If that gets annoying the next step is a small model pass over the leftovers, not more regex.
 
+## Store and rescrape jobs
+
+Scraped events live in `data/events.db` (SQLite, gitignored, override with `SF_EVENTS_DB`). Each source has its own interval in [sf_events/sources/__init__.py](sf_events/sources/__init__.py), 30 minutes for Cerebral Valley. A rescrape replaces that source's rows with what it returned and logs a row in `runs` with count, added, removed, and any error. A failed pull keeps the old rows.
+
+Three ways a rescrape happens:
+
+- `sf-events rescrape [source]` runs one now.
+- `sf-events` (list) first pulls any source past its interval, `--stale` skips that.
+- the web server runs a background thread that checks every minute and pulls whatever is due. The ↻ button in the UI calls `POST /api/rescrape/{source}`.
+
+`sf-events status` and `GET /api/status` show per source: count, last successful pull, last error, next due. See [sf_events/store.py](sf_events/store.py) and [sf_events/jobs.py](sf_events/jobs.py).
+
 ## Sources
 
 **cerebralvalley** The events page is a Next.js app that fills itself from a public JSON API, so the scraper calls that instead of parsing HTML:
@@ -50,7 +64,7 @@ GET https://api.cerebralvalley.ai/v1/public/event/pull?approved=true&locations=B
 
 Pages cap at 100. Timestamps are naive strings in UTC. Most entries are Luma links the Cerebral Valley team approved, a handful are their own hackathons. See [sf_events/sources/cerebralvalley.py](sf_events/sources/cerebralvalley.py).
 
-Adding a source means one module with `fetch(start, end) -> list[Event]` and a line in [sf_events/sources/__init__.py](sf_events/sources/__init__.py). `Event` is in [sf_events/models.py](sf_events/models.py).
+Adding a source means one module with `fetch(start, end) -> list[Event]` and a `Source(name, fetch, every)` line in [sf_events/sources/__init__.py](sf_events/sources/__init__.py). It gets its own rescrape job, status row, and header chip for free. `Event` is in [sf_events/models.py](sf_events/models.py).
 
 ## Tests
 

@@ -1,62 +1,85 @@
-"""tiny web ui over the same sources the cli uses
+"""tiny web ui over the store
 
     uv run sf-events-web          # http://127.0.0.1:8765
 
-one json endpoint, one static page. results are cached for ten minutes so
-reloading the page does not hammer cerebral valley
+reads come from sqlite. a background thread rescrapes each source once it
+is past its interval, and the ui can ask for a rescrape right now
 """
 
+import threading
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from sf_events import jobs
 from sf_events.categorize import FORMATS, TOPICS
-from sf_events.models import PACIFIC, Event
+from sf_events.models import PACIFIC
 from sf_events.sources import SOURCES
+from sf_events.store import Store
 
 STATIC = Path(__file__).parent / "static"
-CACHE_TTL = 600
+# how often the scheduler looks for a source that is due
+TICK = 60
 
-app = FastAPI(title="sf-events")
+store = Store()
+# one rescrape at a time per process, the ui button and the scheduler share it
+_lock = threading.Lock()
 
-# (fetched_at, events) for the one query we actually make: everything upcoming
-_cache: tuple[float, list[Event]] | None = None
+
+def _scheduler(stop: threading.Event) -> None:
+    while not stop.is_set():
+        with _lock:
+            jobs.rescrape_due(store)
+        stop.wait(TICK)
 
 
-def all_upcoming() -> list[Event]:
-    global _cache
-    now = time.time()
-    if _cache and now - _cache[0] < CACHE_TTL:
-        return _cache[1]
-    start = datetime.now(PACIFIC).replace(hour=0, minute=0, second=0, microsecond=0)
-    events: list[Event] = []
-    for fetch in SOURCES.values():
-        events.extend(fetch(start, None))
-    events.sort(key=lambda e: (e.start, e.name))
-    _cache = (now, events)
-    return events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    stop = threading.Event()
+    threading.Thread(target=_scheduler, args=(stop,), daemon=True).start()
+    yield
+    stop.set()
+
+
+app = FastAPI(title="sf-events", lifespan=lifespan)
 
 
 @app.get("/api/events")
 def api_events(days: int | None = Query(default=None, ge=1)):
-    try:
-        events = all_upcoming()
-    except httpx.HTTPError as e:
-        # upstream down or no network, say which instead of a traceback
-        raise HTTPException(502, f"could not reach a source: {e}")
-    if days:
-        cutoff = datetime.now(PACIFIC).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days)
-        events = [e for e in events if e.start < cutoff]
+    # first boot has nothing stored, pull before answering so the page is not empty
+    if any(s["last_ok_at"] is None for s in jobs.status(store)):
+        with _lock:
+            jobs.rescrape_due(store)
+    start = datetime.now(PACIFIC).replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=days) if days else None
+    events = [e for e in store.events() if e.start >= start and (end is None or e.start < end)]
+    events.sort(key=lambda e: (e.start, e.name))
     return {
-        "fetched_at": datetime.fromtimestamp(_cache[0], PACIFIC).isoformat() if _cache else None,
+        "sources": jobs.status(store),
         "formats": FORMATS,
         "topics": TOPICS,
         "events": [e.to_dict() for e in events],
     }
+
+
+@app.get("/api/status")
+def api_status():
+    return jobs.status(store)
+
+
+@app.post("/api/rescrape/{source}")
+def api_rescrape(source: str):
+    if source not in SOURCES:
+        raise HTTPException(404, f"no source named {source}")
+    with _lock:
+        run = jobs.rescrape(store, source)
+    if not run["ok"]:
+        raise HTTPException(502, run["error"])
+    return run
 
 
 @app.get("/")

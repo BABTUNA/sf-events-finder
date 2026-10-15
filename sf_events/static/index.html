@@ -75,6 +75,25 @@
     text-transform: uppercase;
   }
   h1 small { display: block; font: 500 12px/1.4 var(--mono); color: var(--ink-3); text-transform: none; letter-spacing: 0; margin-top: 4px; }
+  /* per source: name, count, last pull, refresh */
+  .sources { display: flex; flex-wrap: wrap; gap: 6px; }
+  .src {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--rule); border-radius: 6px; background: var(--card);
+    padding: 5px 6px 5px 9px; font: 500 11px/1 var(--mono); color: var(--ink-2);
+  }
+  .src .nm { color: var(--ink); }
+  .src .at { color: var(--ink-3); }
+  .src.stale .at { color: var(--bridge); }
+  .src.failed { border-color: var(--bridge); }
+  .src.failed .at { color: var(--bridge); }
+  .src button {
+    border: 0; background: transparent; color: var(--ink-2); cursor: pointer;
+    font: 14px/1 var(--mono); padding: 2px 4px; border-radius: 4px;
+  }
+  .src button:hover { color: var(--bridge); background: var(--bridge-soft); }
+  .src button[disabled] { animation: spin 1s linear infinite; cursor: progress; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .search {
     flex: 1 1 220px; max-width: 360px;
     background: var(--card); border: 1px solid var(--rule); border-radius: 6px;
@@ -183,6 +202,7 @@
 <header>
   <div class="bar">
     <h1>SF events <small id="status">loading</small></h1>
+    <div class="sources" id="sources" aria-label="Sources"></div>
     <input class="search" id="q" type="search" placeholder="Search names, places, summaries" aria-label="Search events" autocomplete="off">
     <div class="seg" id="range" role="group" aria-label="How far ahead">
       <button data-days="7" aria-pressed="true">7d</button>
@@ -206,7 +226,7 @@
 <script>
 (() => {
   const TZ = "America/Los_Angeles";
-  const state = { days: 7, format: "", topics: new Set(), q: "", events: [], fetchedAt: null };
+  const state = { days: 7, format: "", topics: new Set(), q: "", events: [], sources: [] };
   const $ = (s) => document.querySelector(s);
   let FORMATS = [], TOPICS = [];
 
@@ -227,9 +247,10 @@
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.detail || `${r.status} ${r.statusText}`);
       state.events = body.events;
-      state.fetchedAt = body.fetched_at;
+      state.sources = body.sources;
       FORMATS = body.formats; TOPICS = body.topics;
       render();
+      renderSources();
     } catch (e) {
       $("#status").textContent = "could not load";
       $("#list").innerHTML = `<div class="err">Could not load events. Is the server running and online? <code>uv run sf-events-web</code><br><code>${esc(e.message)}</code></div>`;
@@ -331,8 +352,33 @@
 
     const span2 = state.days ? `next ${state.days} days` : "everything upcoming";
     $("#railcap").textContent = `${evs.length} events, ${span2}. Bars are events per day, tap one to jump.`;
-    $("#status").textContent = state.fetchedAt ? `${state.events.length} upcoming · pulled ${fmt(state.fetchedAt, { hour: "numeric", minute: "2-digit" })}` : "";
+    $("#status").textContent = `${state.events.length} upcoming`;
   }
+
+  function renderSources() {
+    $("#sources").innerHTML = state.sources.map((s) => {
+      const failed = s.last_run_ok === false;
+      const at = failed ? "pull failed" : s.last_ok_at ? `pulled ${fmt(s.last_ok_at, { hour: "numeric", minute: "2-digit" })}` : "never pulled";
+      const title = failed ? s.last_error : `rescrapes every ${s.every_minutes} min${s.next_due ? `, next ${fmt(s.next_due, { hour: "numeric", minute: "2-digit" })}` : ""}`;
+      return `<span class="src ${failed ? "failed" : ""} ${s.due ? "stale" : ""}" title="${esc(title || "")}">
+        <span class="nm">${esc(s.source)}</span><span>${s.count}</span><span class="at">${at}</span>
+        <button data-rescrape="${esc(s.source)}" aria-label="Rescrape ${esc(s.source)} now" title="Rescrape now">↻</button></span>`;
+    }).join("");
+  }
+
+  $("#sources").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("button[data-rescrape]"); if (!b) return;
+    b.disabled = true;
+    try {
+      const r = await fetch(`/api/rescrape/${b.dataset.rescrape}`, { method: "POST" });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        $("#status").textContent = `${b.dataset.rescrape}: ${body.detail || r.statusText}`;
+      }
+    } finally {
+      await load();
+    }
+  });
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 

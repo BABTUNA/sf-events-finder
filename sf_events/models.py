@@ -48,6 +48,13 @@ class Event:
         parts = [p for p in (self.venue, self.location) if p]
         return ", ".join(dict.fromkeys(parts))
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Event":
+        fields = {k: d[k] for k in cls.__dataclass_fields__}
+        fields["start"] = datetime.fromisoformat(d["start"])
+        fields["end"] = datetime.fromisoformat(d["end"]) if d.get("end") else None
+        return cls(**fields)
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["start"] = self.start.isoformat()
