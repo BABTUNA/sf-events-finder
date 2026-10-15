@@ -14,12 +14,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-from sf_events import jobs
+from sf_events import jobs, people
 from sf_events.categorize import FORMATS, TOPICS
-from sf_events.merge import dedupe
-from sf_events.models import PACIFIC
+from sf_events.merge import dedupe, dedupe_key
+from sf_events.models import PACIFIC, Event
 from sf_events.sources import SOURCES
 from sf_events.store import Store
 
@@ -49,6 +51,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="sf-events", lifespan=lifespan)
+# the browser extension posts guest lists from partiful.com and luma.com pages
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 @app.get("/api/events")
@@ -61,13 +65,66 @@ def api_events(days: int | None = Query(default=None, ge=1)):
     end = start + timedelta(days=days) if days else None
     events = dedupe([e for e in store.events() if e.start >= start and (end is None or e.start < end)])
     events.sort(key=lambda e: (e.start, e.name))
+    guests = store.all_guest_analyses()
     return {
         "sources": jobs.status(store),
         "formats": FORMATS,
         # rule topics first, then whatever tags the sources added
         "topics": TOPICS + sorted({t for e in events for t in e.topics} - set(TOPICS)),
-        "events": [e.to_dict() for e in events],
+        "events": [_with_guests(e, guests.get(dedupe_key(e))) for e in events],
     }
+
+
+def _with_guests(e: Event, g: dict | None) -> dict:
+    d = e.to_dict()
+    d["key"] = dedupe_key(e)
+    if g:
+        bonus, reasons = people.score_bonus(g["analysis"])
+        d["score"] = min(100, d["score"] + bonus)
+        d["score_reasons"] = d["score_reasons"] + reasons
+        d["guests"] = {"scraped_at": g["scraped_at"], **g["analysis"]}
+    else:
+        d["guests"] = None
+    return d
+
+
+class GuestList(BaseModel):
+    # the event page the extension was on
+    page_url: str
+    guests: list[dict]
+
+
+@app.post("/api/guests")
+def api_post_guests(body: GuestList):
+    key = _key_for_url(body.page_url)
+    analysis = people.analyze(body.guests)
+    store.set_guests(key, _event_url(body.page_url), body.page_url, body.guests, analysis)
+    known = any(dedupe_key(e) == key for e in store.events())
+    return {"key": key, "known_event": known, **analysis}
+
+
+@app.get("/api/guests/{key:path}")
+def api_get_guests(key: str):
+    g = store.guests(key)
+    if not g:
+        raise HTTPException(404, "no guest list for that event")
+    return g
+
+
+def _event_url(page_url: str) -> str:
+    # strip query and fragment, keep the canonical event page
+    from urllib.parse import urlsplit, urlunsplit
+    u = urlsplit(page_url)
+    return urlunsplit((u.scheme, u.netloc, u.path, "", ""))
+
+
+def _key_for_url(page_url: str) -> str:
+    # reuse the dedupe key so a scraped list lines up with whichever source has the event
+    probe = Event(
+        id="probe", source="probe", name="", start=datetime.now(PACIFIC), end=None, url=_event_url(page_url),
+        location=None, venue=None, summary=None, kind=None, image_url=None,
+    )
+    return dedupe_key(probe)
 
 
 @app.get("/api/status")

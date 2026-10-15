@@ -50,6 +50,14 @@ uv run sf-events --days 14 --sort score --min-score 40
 
 In the UI: sort by score, a "worth it" filter at 40, the number on every row and the reasons under it.
 
+## Guest lists and who is in the room
+
+Guest lists on Partiful and Luma are only visible logged in, so they come from a small Chrome extension in [extension/](extension/) rather than the scraper. Load it unpacked (`chrome://extensions`, Developer mode, Load unpacked, pick the `extension` folder). On any Partiful or Luma event page, open the guest list and click the `guests → sf-events` button in the corner. It scrolls the list until it stops growing, extracts name, bio and links per guest, and posts them to `POST /api/guests` on the local server.
+
+The server keys the list the same way dedupe keys events, so it lines up with whichever source has the event. [sf_events/people.py](sf_events/people.py) tags each guest from their bio (investor, founder, exec, researcher, engineer, student, plus `@org` for a notable company) and gives the event counts and a notable list. Investors and founders in the room add up to 25 points to the score. In the UI the row shows `212 guests · 3 investors · 14 founders` and `who` opens the notable people with their links.
+
+The Partiful extractor is built against a real guest list. The Luma one is best effort until it has been checked against a logged in page, so if it returns nothing on Luma, paste the guest dialog's HTML and the selectors can be fixed in [extension/extract.js](extension/extract.js).
+
 ## Categories
 
 Cerebral Valley only labels its own hackathons, so categories are keyword rules over the name and summary in [sf_events/categorize.py](sf_events/categorize.py). Two axes:

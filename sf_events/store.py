@@ -36,6 +36,14 @@ create table if not exists runs (
     error text
 );
 create index if not exists runs_source on runs(source, id);
+create table if not exists guest_lists (
+    key text primary key,
+    event_url text not null,
+    page_url text not null,
+    scraped_at text not null,
+    guests text not null,
+    analysis text not null
+);
 """
 
 # columns added after the first release, applied if missing
@@ -96,6 +104,35 @@ class Store:
         with self._conn() as c:
             rows = c.execute(q, (source,) if source else ()).fetchall()
         return [Event.from_dict(json.loads(r["data"])) for r in rows]
+
+    # guest lists, keyed the same way dedupe keys events so they survive source changes
+
+    def set_guests(self, key: str, event_url: str, page_url: str, guests: list[dict], analysis: dict) -> None:
+        with self._conn() as c:
+            c.execute(
+                """insert into guest_lists (key, event_url, page_url, scraped_at, guests, analysis) values (?, ?, ?, ?, ?, ?)
+                   on conflict(key) do update set event_url = excluded.event_url, page_url = excluded.page_url,
+                   scraped_at = excluded.scraped_at, guests = excluded.guests, analysis = excluded.analysis""",
+                (key, event_url, page_url, _now(), json.dumps(guests), json.dumps(analysis)),
+            )
+
+    def guests(self, key: str) -> dict | None:
+        with self._conn() as c:
+            r = c.execute("select * from guest_lists where key = ?", (key,)).fetchone()
+        return self._guest_row(r) if r else None
+
+    def all_guest_analyses(self) -> dict[str, dict]:
+        """key -> {scraped_at, analysis}, the light version for list views"""
+        with self._conn() as c:
+            rows = c.execute("select key, scraped_at, analysis from guest_lists").fetchall()
+        return {r["key"]: {"scraped_at": r["scraped_at"], "analysis": json.loads(r["analysis"])} for r in rows}
+
+    @staticmethod
+    def _guest_row(r) -> dict:
+        d = dict(r)
+        d["guests"] = json.loads(d["guests"])
+        d["analysis"] = json.loads(d["analysis"])
+        return d
 
     # runs
 
