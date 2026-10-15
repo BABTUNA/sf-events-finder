@@ -14,6 +14,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from sf_events.categorize import FORMATS, TOPICS
 from sf_events.models import PACIFIC, Event
 from sf_events.sources import SOURCES
 
@@ -52,6 +53,8 @@ def api_events(days: int | None = Query(default=None, ge=1)):
         events = [e for e in events if e.start < cutoff]
     return {
         "fetched_at": datetime.fromtimestamp(_cache[0], PACIFIC).isoformat() if _cache else None,
+        "formats": FORMATS,
+        "topics": TOPICS,
         "events": [e.to_dict() for e in events],
     }
 

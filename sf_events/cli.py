@@ -3,6 +3,7 @@ import json
 import sys
 from datetime import datetime, timedelta
 
+from sf_events.categorize import FORMATS, TOPICS
 from sf_events.models import PACIFIC, Event
 from sf_events.sources import SOURCES
 
@@ -15,6 +16,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--days", type=int, default=7, help="how far ahead to look (default 7)")
     p.add_argument("--all", action="store_true", help="ignore --days, show everything the sources know")
     p.add_argument("--search", help="only events whose name or summary contains this (case-insensitive)")
+    p.add_argument("--format", choices=FORMATS, action="append", help="hackathon, talk, social... repeatable")
+    p.add_argument("--topic", choices=TOPICS, action="append", help="agents, infra, robotics... repeatable")
     p.add_argument("--source", choices=sorted(SOURCES), action="append", help="limit to a source, repeatable")
     p.add_argument("--json", action="store_true", help="print json instead of the table")
     p.add_argument("--out", help="also write json here")
@@ -34,6 +37,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.search:
         q = args.search.lower()
         events = [e for e in events if q in e.name.lower() or q in (e.summary or "").lower()]
+    if args.format:
+        events = [e for e in events if e.format in args.format]
+    if args.topic:
+        events = [e for e in events if set(e.topics) & set(args.topic)]
     events.sort(key=lambda e: (e.start, e.name))
 
     if args.out:
@@ -58,8 +65,8 @@ def print_table(events: list[Event]) -> None:
             day = d
             print(f"\n{e.start_local:%a %b %-d}")
         t = e.start_local.strftime("%-I:%M %p").rjust(8)
-        tag = f" [{e.kind}]" if e.kind else ""
-        print(f"  {t}  {e.name}{tag}")
+        tags = " ".join(f"#{x}" for x in (e.format, *e.topics) if x != "other")
+        print(f"  {t}  {e.name}  {tags}")
         print(f"            {e.where}  ·  {e.url}")
     print(f"\n{len(events)} events")
 

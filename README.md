@@ -7,6 +7,7 @@ uv sync
 uv run sf-events                       # next 7 days, grouped by day
 uv run sf-events --days 30             # further out
 uv run sf-events --search hackathon    # filter by name or summary
+uv run sf-events --format talk --topic agents   # categories, see below
 uv run sf-events --all --json > out.json
 ```
 
@@ -26,9 +27,18 @@ Thu Oct 15
 uv run sf-events-web      # http://127.0.0.1:8765
 ```
 
-One page, same data. Search, pick a range (7, 14, 30 days or everything), filter to hackathons. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. Results are cached for ten minutes so reloading does not hammer the source.
+One page, same data. Search, pick a range (7, 14, 30 days or everything), click format and topic chips to narrow. Chip counts show what each click would leave. The bars across the top are events per day, click one to jump to that day. Rows link straight to the registration page. Results are cached for ten minutes so reloading does not hammer the source.
 
 ![web ui](docs/web.png)
+
+## Categories
+
+Cerebral Valley only labels its own hackathons, so categories are keyword rules over the name and summary in [sf_events/categorize.py](sf_events/categorize.py). Two axes:
+
+- **format**, one per event, first matching rule wins and the title is checked before the summary: hackathon, conference, workshop, demo, talk, social, meetup, or other.
+- **topics**, any that match: agents, coding, infra, data, robotics, security, founders, research, health, open source, design.
+
+On a 236 event pull, 13 fell through to other. If that gets annoying the next step is a small model pass over the leftovers, not more regex.
 
 ## Sources
 
