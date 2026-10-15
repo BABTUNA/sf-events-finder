@@ -39,10 +39,12 @@ def test_score_bonus_is_capped():
     assert any("investors" in r for r in reasons)
 
 
-def test_post_guests_endpoint(tmp_path):
-    from sf_events import web
+def test_post_guests_endpoint(tmp_path, monkeypatch):
+    from sf_events import resolve, web
     from sf_events.store import Store
     web.store = Store(tmp_path / "t.db")
+    # an unknown event would be resolved from its page, keep the test off the network
+    monkeypatch.setattr(resolve, "resolve", lambda url, **kw: None)
     client = TestClient(web.app)
 
     r = client.post("/api/guests", json={"page_url": "https://partiful.com/e/STg1eJrPTO14OpwysakA?foo=1", "guests": GUESTS})
@@ -106,3 +108,35 @@ def test_enrich_luma_stops_at_rate_limit():
     finally:
         people.PROFILE_WORKERS = saved
     assert len(hit) == 1 and all(not g["bio"] for g in out)
+
+
+def test_resolve_partiful_page_and_luma_slug():
+    import httpx
+    from pathlib import Path
+    from sf_events import resolve
+
+    page = Path(__file__).parent / "fixtures" / "partiful_explore.html"
+    detail = Path(__file__).parent / "fixtures" / "luma_detail.json"
+    import json as _json
+    luma_detail = _json.loads(detail.read_text())
+    luma_detail["data"]["event"] = {
+        "api_id": "evt-1", "name": "TiDB SCaiLE", "start_at": "2026-10-15T16:00:00.000Z", "end_at": "2026-10-16T02:00:00.000Z",
+        "url": "5gm1z99p", "geo_address_info": {"mode": "shown", "address": "CHM", "city_state": "Mountain View, CA"},
+    }
+    luma_detail["data"]["hosts"] = [{"name": "TiDB"}]
+
+    def handler(request):
+        if "partiful.com" in request.url.host:
+            # reuse the explore fixture, lifting one event into pageProps.event the way an event page has it
+            import re
+            pp = _json.loads(re.search(r'__NEXT_DATA__" type="application/json">(.*?)</script>', page.read_text(), re.S).group(1))
+            ev = pp["props"]["pageProps"]["trendingSection"]["items"][0]["event"]
+            return httpx.Response(200, text='<script id="__NEXT_DATA__" type="application/json">' + _json.dumps({"props": {"pageProps": {"event": ev}}}) + "</script>")
+        return httpx.Response(200, json=luma_detail)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    p = resolve.resolve("https://partiful.com/e/inL3CAQCBCPIwQvOjKYa", client=client)
+    assert p and p.source == "scraped" and p.id == "partiful:inL3CAQCBCPIwQvOjKYa" and p.venue == "Kilowatt"
+    l = resolve.resolve("https://luma.com/5gm1z99p", client=client)
+    assert l and l.source == "scraped" and l.url == "https://luma.com/5gm1z99p" and l.host == "TiDB" and l.summary
+    assert resolve.resolve("https://www.eventbrite.com/e/x", client=client) is None

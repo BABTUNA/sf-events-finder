@@ -140,6 +140,7 @@
   .ev.src-cerebralvalley .t { border-right-color: var(--cv); }
   .ev.src-partiful .t { border-right-color: var(--partiful); }
   .pill.partiful { color: var(--partiful); background: var(--partiful-soft); }
+  .pill.me { color: var(--ink-2); background: var(--fog-2); }
   #srcfilter button.is-partiful[aria-pressed="true"] { background: var(--partiful); color: #fff; }
   .ev.live .t { border-right-color: var(--live); }
   .pill { display: inline-block; font: 600 9px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 6px; border-radius: 3px; }
@@ -170,6 +171,13 @@
   .people .row .lk a { font: 400 11px var(--mono); color: var(--ink-3); margin-left: 6px; }
   .people .tag { font: 500 9px/1 var(--mono); text-transform: uppercase; letter-spacing: .06em; padding: 2px 4px; border-radius: 3px; background: var(--bridge-soft); color: var(--bridge); margin-left: 5px; vertical-align: 1px; }
   .people .meta { font: 400 11px var(--mono); color: var(--ink-3); margin-bottom: 6px; }
+  .people .pfilter { width: 100%; max-width: 420px; background: var(--fog); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 9px; font: 13px var(--body); color: var(--ink); margin-bottom: 8px; }
+  .people .grp { font: 500 10px/1 var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; margin: 10px 0 4px; }
+  .people .row.stands .nm { color: var(--ink); }
+  .people .row:not(.stands) .nm { font-weight: 500; color: var(--ink-2); }
+  .people .hosted { color: var(--ink-3); font: 400 11px var(--mono); }
+  .orphans { margin: 18px 0 0; padding: 10px 14px; border-left: 3px solid var(--rule); font: 400 12px/1.5 var(--mono); color: var(--ink-2); }
+  .orphans a { color: var(--ink); }
   @media (max-width: 640px) { .people { padding-left: 16px; } .people .row { grid-template-columns: 1fr; gap: 2px; } }
   .ev .tags span { margin-right: 8px; }
 
@@ -264,6 +272,7 @@
     <div class="seg" id="worth" role="group" aria-label="Worth it">
       <button data-worth="0" aria-pressed="true">all</button>
       <button data-worth="40" aria-pressed="false">worth it</button>
+      <button data-worth="-1" aria-pressed="false" title="only events with a scraped guest list">scraped</button>
     </div>
     <div class="seg" id="range" role="group" aria-label="How far ahead">
       <button data-days="7" aria-pressed="true">7d</button>
@@ -281,19 +290,21 @@
 <main class="wrap">
   <nav class="rail" id="rail" aria-label="Events per day"></nav>
   <p class="rail-cap" id="railcap"></p>
+  <div id="orphans"></div>
   <div id="list"></div>
 </main>
 
 <script>
 (() => {
   const TZ = "America/Los_Angeles";
-  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, moreTopics: false, events: [], sources: [] };
+  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, moreTopics: false, events: [], sources: [], orphans: [] };
   const $ = (s) => document.querySelector(s);
   let FORMATS = [], TOPICS = [];
   const PILL = {
     luma: { cls: "luma", label: "luma", name: "Luma" },
     cerebralvalley: { cls: "cv", label: "cv", name: "Cerebral Valley" },
     partiful: { cls: "partiful", label: "partiful", name: "Partiful" },
+    scraped: { cls: "me", label: "scraped", name: "you, via the extension" },
   };
 
   // ymd in pacific so grouping matches what the cli prints
@@ -314,6 +325,7 @@
       if (!r.ok) throw new Error(body.detail || `${r.status} ${r.statusText}`);
       state.events = body.events;
       state.sources = body.sources;
+      state.orphans = body.orphan_guest_lists || [];
       FORMATS = body.formats; TOPICS = body.topics;
       render();
       renderSources();
@@ -330,7 +342,8 @@
     return state.events.filter((e) => {
       const d = ymd(e.start);
       if (end && d >= end) return false;
-      if (state.worth && e.score < state.worth) return false;
+      if (state.worth === -1 && !e.guests) return false;
+      if (state.worth > 0 && e.score < state.worth) return false;
       if (state.src && e.source !== state.src && !e.also.includes(state.src)) return false;
       if (state.format && e.format !== state.format) return false;
       if (state.topics.size && !e.topics.some((t) => state.topics.has(t))) return false;
@@ -429,13 +442,16 @@
             <span class="sub"><span class="where">${esc(e.where || "")}${e.host ? `<span class="host-name"> · ${esc(e.host)}</span>` : ""}</span>${e.summary ? `<span class="sum" title="${esc(e.summary)}">${esc(e.summary)}</span>` : ""}
               <span class="tags">${[e.format === "other" ? "" : e.format, ...e.topics].filter(Boolean).map((t) => `<span>#${esc(t)}</span>`).join("")}</span>
               ${e.score_reasons.length ? `<span class="why"><b>${e.score}</b> · ${esc(e.score_reasons.join(", "))}</span>` : ""}
-              ${e.guests ? `<span class="guests">${guestLine(e.guests)}${e.guests.notable.length ? `<span class="open" role="button" data-people="${esc(e.key)}">who is going</span>` : ""}</span>` : ""}</span>
-          </a>${e.guests && e.guests.notable.length ? peoplePanel(e) : ""}`;
+              ${e.guests ? `<span class="guests">${guestLine(e.guests)}<span class="open" role="button" data-people="${esc(e.key)}">who is going</span></span>` : ""}</span>
+          </a>${e.guests ? peoplePanel(e) : ""}`;
         }).join("")}
       </section>`;
     }).join("") || `<div class="empty"><b>Nothing here</b>Try a wider range, another format, or clear the search.</div>`;
 
     const span2 = state.days ? `next ${state.days} days` : "everything upcoming";
+    $("#orphans").innerHTML = state.orphans.length
+      ? `<div class="orphans">${state.orphans.length} scraped guest list${state.orphans.length > 1 ? "s" : ""} for events not in this window: ${state.orphans.map((o) => `<a href="${esc(o.event_url)}" target="_blank" rel="noopener">${esc(host(o.event_url))}/${esc(o.key.split(":")[1])}</a> (${esc(o.summary)})`).join(", ")}. Widen the range or they may have passed.</div>`
+      : "";
     $("#railcap").textContent = `${evs.length} events, ${span2}. Bars are events per day, tap one to jump.`;
     $("#status").textContent = `${state.events.length} upcoming`;
   }
@@ -483,21 +499,64 @@
 
   function peoplePanel(e) {
     const g = e.guests;
-    return `<div class="people" id="p-${esc(e.key)}">
-      <div class="meta">guest list scraped ${fmt(g.scraped_at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${g.counts.with_bio} of ${g.counts.guests} wrote a bio · showing the ${g.notable.length} that stand out</div>
-      ${g.notable.map((p) => `<div class="row">
-        <span class="nm">${esc(p.name)}${p.tags.filter((t) => !t.startsWith("@")).slice(0, 2).map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</span>
-        <span class="bio">${esc(p.bio)}${p.tags.filter((t) => t.startsWith("@")).map((t) => ` <span class="tag">${esc(t)}</span>`).join("")}</span>
-        <span class="lk">${p.links.map((l) => `<a href="${esc(l)}" target="_blank" rel="noopener">${esc(host(l))}</a>`).join("")}</span>
-      </div>`).join("")}
+    return `<div class="people" id="p-${esc(e.key)}" data-key="${esc(e.key)}">
+      <div class="meta">guest list scraped ${fmt(g.scraped_at, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${g.counts.with_bio} of ${g.counts.guests} have a bio</div>
+      <input class="pfilter" type="search" placeholder="Filter ${g.counts.guests} guests by name, bio, tag" aria-label="Filter guests">
+      <div class="plist">loading…</div>
     </div>`;
   }
+
+  function personRow(p) {
+    const roles = (p.tags || []).filter((t) => !t.startsWith("@")).slice(0, 2);
+    const orgs = (p.tags || []).filter((t) => t.startsWith("@"));
+    return `<div class="row ${p.weight > 0 ? "stands" : ""}">
+      <span class="nm">${esc(p.name)}${roles.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</span>
+      <span class="bio">${esc(p.bio || "")}${orgs.map((t) => ` <span class="tag">${esc(t)}</span>`).join("")}${p.hosted >= 3 ? `<span class="hosted"> · hosted ${p.hosted}</span>` : ""}</span>
+      <span class="lk">${(p.links || []).map((l) => `<a href="${esc(l)}" target="_blank" rel="noopener">${esc(host(l))}</a>`).join("")}</span>
+    </div>`;
+  }
+
+  // full lists are fetched when a panel opens, the events payload only carries the summary
+  const peopleCache = new Map();
+  async function fillPanel(panel) {
+    const key = panel.dataset.key;
+    if (!peopleCache.has(key)) {
+      const r = await fetch(`/api/guests/${encodeURIComponent(key)}`);
+      if (!r.ok) { panel.querySelector(".plist").textContent = "could not load the guest list"; return; }
+      const body = await r.json();
+      // everyone, tagged and weighted, notable first then alphabetical
+      const byName = new Map(body.analysis.notable.map((p) => [p.name, p]));
+      const all = body.guests.map((g) => byName.get(g.name) || { ...g, tags: g.tags || [], weight: 0 });
+      all.sort((a, b) => (b.weight || 0) - (a.weight || 0) || a.name.localeCompare(b.name));
+      peopleCache.set(key, all);
+    }
+    renderPeople(panel, peopleCache.get(key), panel.querySelector(".pfilter").value);
+  }
+
+  function renderPeople(panel, all, q) {
+    q = (q || "").trim().toLowerCase();
+    const rows = q ? all.filter((p) => `${p.name} ${p.bio || ""} ${(p.tags || []).join(" ")}`.toLowerCase().includes(q)) : all;
+    const stand = rows.filter((p) => p.weight > 0), rest = rows.filter((p) => !(p.weight > 0));
+    panel.querySelector(".plist").innerHTML =
+      (stand.length ? `<div class="grp">${stand.length} stand out</div>` + stand.map(personRow).join("") : "") +
+      (rest.length ? `<div class="grp">${rest.length} more</div>` + rest.map(personRow).join("") : "") +
+      (!rows.length ? `<div class="grp">nobody matches</div>` : "");
+  }
+
+  $("#list").addEventListener("input", (ev) => {
+    const f = ev.target.closest(".pfilter"); if (!f) return;
+    const panel = f.closest(".people");
+    if (peopleCache.has(panel.dataset.key)) renderPeople(panel, peopleCache.get(panel.dataset.key), f.value);
+  });
 
   // the "who" toggle sits inside the row anchor, so stop the click from opening the event
   $("#list").addEventListener("click", (ev) => {
     const w = ev.target.closest("[data-people]"); if (!w) return;
     ev.preventDefault(); ev.stopPropagation();
-    document.getElementById("p-" + w.dataset.people)?.classList.toggle("on");
+    const panel = document.getElementById("p-" + w.dataset.people);
+    if (!panel) return;
+    panel.classList.toggle("on");
+    if (panel.classList.contains("on")) fillPanel(panel);
   });
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

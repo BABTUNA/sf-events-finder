@@ -90,6 +90,16 @@ class Store:
                 c.executemany("delete from events where id = ?", [(i,) for i in gone])
         return len(ids - before), len(gone)
 
+    def add(self, source: str, events: list[Event]) -> None:
+        """insert or update rows without removing anything, for one-off additions"""
+        now = _now()
+        with self._conn() as c:
+            c.executemany(
+                """insert into events (id, source, data, first_seen, last_seen) values (?, ?, ?, ?, ?)
+                   on conflict(id) do update set data = excluded.data, last_seen = excluded.last_seen""",
+                [(e.id, source, json.dumps(e.to_dict()), now, now) for e in events],
+            )
+
     def upsert(self, events: list[Event]) -> None:
         """rewrite these rows in place, nothing added or removed"""
         now = _now()
@@ -124,8 +134,8 @@ class Store:
     def all_guest_analyses(self) -> dict[str, dict]:
         """key -> {scraped_at, analysis}, the light version for list views"""
         with self._conn() as c:
-            rows = c.execute("select key, scraped_at, analysis from guest_lists").fetchall()
-        return {r["key"]: {"scraped_at": r["scraped_at"], "analysis": json.loads(r["analysis"])} for r in rows}
+            rows = c.execute("select key, event_url, scraped_at, analysis from guest_lists").fetchall()
+        return {r["key"]: {"event_url": r["event_url"], "scraped_at": r["scraped_at"], "analysis": json.loads(r["analysis"])} for r in rows}
 
     @staticmethod
     def _guest_row(r) -> dict:

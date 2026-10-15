@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from sf_events import jobs, people
+from sf_events import jobs, people, resolve
 from sf_events.categorize import FORMATS, TOPICS
 from sf_events.merge import dedupe, dedupe_key
 from sf_events.models import PACIFIC, Event
@@ -66,8 +66,14 @@ def api_events(days: int | None = Query(default=None, ge=1)):
     events = dedupe([e for e in store.events() if e.start >= start and (end is None or e.start < end)])
     events.sort(key=lambda e: (e.start, e.name))
     guests = store.all_guest_analyses()
+    keys = {dedupe_key(e) for e in events}
     return {
         "sources": jobs.status(store),
+        # scraped lists whose event is not in this window, so they are not lost
+        "orphan_guest_lists": [
+            {"key": k, "event_url": g["event_url"], "scraped_at": g["scraped_at"], "summary": g["analysis"]["summary"]}
+            for k, g in guests.items() if k not in keys
+        ],
         "formats": FORMATS,
         # rule topics first, then whatever tags the sources added
         "topics": TOPICS + sorted({t for e in events for t in e.topics} - set(TOPICS)),
@@ -102,6 +108,12 @@ def api_post_guests(body: GuestList):
     analysis = people.analyze(guests)
     store.set_guests(key, _event_url(body.page_url), body.page_url, guests, analysis)
     known = any(dedupe_key(e) == key for e in store.events())
+    if not known:
+        # no source has this event, pull it from its own page so the list has a row
+        ev = resolve.resolve(_event_url(body.page_url))
+        if ev:
+            store.add(resolve.SOURCE, [ev])
+            known = True
     return {"key": key, "known_event": known, **analysis}
 
 
