@@ -34,10 +34,36 @@ store = Store()
 _lock = threading.Lock()
 
 
+# guest lists whose event page could not be resolved, so we do not refetch them every tick
+_unresolvable: set[str] = set()
+
+
+def adopt_orphans() -> int:
+    """give every guest list without an event row a permanent one, pulled from the event page.
+
+    sources drop events once they pass, so a list scraped after you went
+    would otherwise point at nothing. rows under the scraped source are
+    never replaced by a rescrape, so once adopted they stay
+    """
+    keys = {dedupe_key(e) for e in store.events()}
+    adopted = 0
+    for key, g in store.all_guest_analyses().items():
+        if key in keys or key in _unresolvable:
+            continue
+        ev = resolve.resolve(g["event_url"])
+        if ev:
+            store.add(resolve.SOURCE, [ev])
+            adopted += 1
+        else:
+            _unresolvable.add(key)
+    return adopted
+
+
 def _scheduler(stop: threading.Event) -> None:
     while not stop.is_set():
         with _lock:
             jobs.rescrape_due(store)
+            adopt_orphans()
             jobs.enrich_due(store)
             lookup.lookup_due(store)
         stop.wait(TICK)
@@ -64,23 +90,37 @@ def api_events(days: int | None = Query(default=None, ge=1)):
             jobs.rescrape_due(store)
     start = datetime.now(PACIFIC).replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=days) if days else None
-    events = dedupe([e for e in store.events() if e.start >= start and (end is None or e.start < end)])
-    events.sort(key=lambda e: (e.start, e.name))
+    everything = dedupe(store.events())
+    events = sorted((e for e in everything if e.start >= start and (end is None or e.start < end)), key=lambda e: (e.start, e.name))
     guests = store.all_guest_analyses()
-    keys = {dedupe_key(e) for e in events}
     saved = store.saved()
+    keys = {dedupe_key(e) for e in events}
     rows = [_with_guests(e, guests.get(dedupe_key(e))) for e in events]
     for r in rows:
         r["saved"] = r["key"] in saved
-    # saved events outside this window ride along as snapshots so the saved view is complete
+    # rows outside the window that still matter: saved, or carrying a guest list.
+    # past events included, that is how a list you scraped after going shows up
     extra = []
+    now = datetime.now(PACIFIC)
+    for e in everything:
+        k = dedupe_key(e)
+        if k in keys or (k not in saved and k not in guests):
+            continue
+        r = _with_guests(e, guests.get(k))
+        r["saved"] = k in saved
+        r["past"] = e.start < now
+        extra.append(r)
+        keys.add(k)
+    # saved snapshots for events no source has at all
     for k, sv in saved.items():
         if k not in keys:
-            snap = dict(sv["event"], saved=True, stale=True)
+            snap = dict(sv["event"], saved=True, stale=True, past=sv["event"].get("start", "") < now.isoformat())
             snap["guests"] = None
             extra.append(snap)
+            keys.add(k)
+    extra.sort(key=lambda r: r["start"])
     return {
-        "saved_extra": extra,
+        "extra": extra,
         "sources": jobs.status(store),
         "lookup": {"enabled": config.lookup_enabled(), "people": store.people_count(), "pending_lists": len(lookup.lists_with_work(store)) if config.lookup_enabled() else 0},
         # scraped lists whose event is not in this window, so they are not lost

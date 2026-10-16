@@ -308,7 +308,7 @@
 <script>
 (() => {
   const TZ = "America/Los_Angeles";
-  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, moreTopics: false, events: [], savedExtra: [], sources: [], orphans: [] };
+  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, moreTopics: false, events: [], extra: [], sources: [], orphans: [] };
   const $ = (s) => document.querySelector(s);
   let FORMATS = [], TOPICS = [];
   const PILL = {
@@ -335,7 +335,7 @@
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.detail || `${r.status} ${r.statusText}`);
       state.events = body.events;
-      state.savedExtra = body.saved_extra || [];
+      state.extra = body.extra || [];
       state.sources = body.sources;
       state.orphans = body.orphan_guest_lists || [];
       FORMATS = body.formats; TOPICS = body.topics;
@@ -349,10 +349,11 @@
 
   function visible() {
     const today = todayYmd();
-    const savedView = state.worth === -2;
-    const end = state.days && !savedView ? addDays(today, state.days) : null;
+    // saved and scraped views ignore the date window and include past events
+    const wide = state.worth === -2 || state.worth === -1;
+    const end = state.days && !wide ? addDays(today, state.days) : null;
     const q = state.q.trim().toLowerCase();
-    const pool = savedView ? [...state.events, ...state.savedExtra] : state.events;
+    const pool = wide ? [...state.events, ...state.extra] : state.events;
     return pool.filter((e) => {
       const d = ymd(e.start);
       if (end && d >= end) return false;
@@ -452,7 +453,7 @@
           const srcs = [e.source, ...e.also];
           return `<a class="ev ${live ? "live" : ""} src-${e.source}" href="${e.url}" target="_blank" rel="noopener">
             <span class="t">${state.sort === "score" ? `<span class="tday">${fmt(e.start, { weekday: "short", day: "numeric" })}</span>` : ""}${fmt(e.start, { hour: "numeric", minute: "2-digit" })}${live ? '<span class="live-dot">LIVE</span>' : ""}</span>
-            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}${e.stale ? `<span class="kind stale" title="no longer in any source, this is the row as it was when saved">saved copy</span>` : ""}</span>
+            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}${e.stale ? `<span class="kind stale" title="no longer in any source, this is the row as it was when saved">saved copy</span>` : ""}${e.past ? `<span class="kind stale">past</span>` : ""}</span>
             <span class="host"><span class="pills"><button class="star ${e.saved ? "on" : ""}" data-save="${esc(e.key)}" title="${e.saved ? "Saved, click to remove" : "Save this event"}" aria-pressed="${!!e.saved}">${e.saved ? "★" : "☆"}</button><span class="score ${e.score >= 40 ? "high" : e.score >= 20 ? "mid" : ""}" title="how worth it this looks, 0 to 100">${e.score}</span>${srcs.map((s) => `<span class="pill ${PILL[s]?.cls || "cv"}" title="Listed by ${PILL[s]?.name || s}">${PILL[s]?.label || s}</span>`).join("")}</span><span class="dom">${esc(host(e.url))}</span></span>
             <span class="sub"><span class="where">${esc(e.where || "")}${e.host ? `<span class="host-name"> · ${esc(e.host)}</span>` : ""}</span>${e.summary ? `<span class="sum" title="${esc(e.summary)}">${esc(e.summary)}</span>` : ""}
               <span class="tags">${[e.format === "other" ? "" : e.format, ...e.topics].filter(Boolean).map((t) => `<span>#${esc(t)}</span>`).join("")}</span>
@@ -463,11 +464,12 @@
       </section>`;
     }).join("") || `<div class="empty"><b>Nothing here</b>Try a wider range, another format, or clear the search.</div>`;
 
-    const span2 = state.worth === -2 ? "saved, any date" : state.days ? `next ${state.days} days` : "everything upcoming";
+    const span2 = state.worth === -2 ? "saved, any date" : state.worth === -1 ? "with a guest list, any date" : state.days ? `next ${state.days} days` : "everything upcoming";
     $("#orphans").innerHTML = state.orphans.length
       ? `<div class="orphans">${state.orphans.length} scraped guest list${state.orphans.length > 1 ? "s" : ""} for events not in this window: ${state.orphans.map((o) => `<a href="${esc(o.event_url)}" target="_blank" rel="noopener">${esc(host(o.event_url))}/${esc(o.key.split(":")[1])}</a> (${esc(o.summary)})`).join(", ")}. Widen the range or they may have passed.</div>`
       : "";
-    $("#railcap").textContent = `${evs.length} events, ${span2}. Bars are events per day, tap one to jump.`;
+    const pastCount = evs.filter((e) => ymd(e.start) < today).length;
+    $("#railcap").textContent = `${evs.length} events, ${span2}.${pastCount ? ` ${pastCount} already happened, listed below the rail.` : ""} Bars are events per day, tap one to jump.`;
     $("#status").textContent = `${state.events.length} upcoming`;
   }
 
@@ -569,14 +571,14 @@
     const b = ev.target.closest("button[data-save]"); if (!b) return;
     ev.preventDefault(); ev.stopPropagation();
     const key = b.dataset.save;
-    const e = [...state.events, ...state.savedExtra].find((x) => x.key === key);
+    const e = [...state.events, ...state.extra].find((x) => x.key === key);
     if (!e) return;
     const r = e.saved
       ? await fetch(`/api/saved/${encodeURIComponent(key)}`, { method: "DELETE" })
       : await fetch(`/api/saved/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: e }) });
     if (!r.ok) return;
     e.saved = !e.saved;
-    if (!e.saved) state.savedExtra = state.savedExtra.filter((x) => x.key !== key);
+    if (!e.saved) state.extra = state.extra.filter((x) => !(x.key === key && !x.guests));
     render();
   });
 

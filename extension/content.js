@@ -43,16 +43,28 @@
     return candidates.sort((a, b) => b.scrollHeight - a.scrollHeight)[0] || null;
   }
 
+  // what the page says the list holds: luma "162 Guests", partiful "170 on the list"
+  function expectedCount() {
+    const t = document.body.innerText;
+    const m = t.match(/(\d[\d,]*)\s+(?:on the list|Guests\b)/i);
+    return m ? parseInt(m[1].replace(/,/g, ""), 10) : null;
+  }
+
   btn.addEventListener("click", async () => {
     btn.disabled = true;
     try {
       const guests = await loadAll();
       if (!guests.length) { say("no guests visible, open the guest list first", "#7a3b2e"); return; }
+      const expected = expectedCount();
+      // a partial grab usually means the full modal is not open, send it anyway but say so
+      const short = expected && guests.length < expected * 0.8;
       say(`sending ${guests.length}…`);
       const res = await chrome.runtime.sendMessage({ type: "guests", page_url: location.href, guests });
       if (res?.ok) {
         const c = res.body.counts || {};
-        say(`sent ${c.guests} · ${c.founder || 0} founders · ${c.investor || 0} investors${res.body.known_event ? "" : " (event not in list yet)"}`, "#1f8a4c");
+        say(short
+          ? `sent ${c.guests} of ${expected}. open the full guest list and click again to get the rest`
+          : `sent ${c.guests} · ${c.founder || 0} founders · ${c.investor || 0} investors${res.body.known_event ? "" : " (event not in list yet)"}`, short ? "#9a6b1f" : "#1f8a4c");
       } else {
         say(`failed: ${res?.body?.detail || res?.status || "server off?"}`, "#7a3b2e");
       }

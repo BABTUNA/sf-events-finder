@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SF Events guest list",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send the guest list of the Partiful or Luma event you are looking at to your local sf-events server.",
   "permissions": ["activeTab"],
   "host_permissions": ["http://127.0.0.1:8765/*", "http://localhost:8765/*"],

@@ -147,6 +147,7 @@ def test_saved_events_roundtrip(tmp_path, monkeypatch):
     from sf_events.store import Store
     web.store = Store(tmp_path / "t.db")
     monkeypatch.setattr(resolve, "resolve", lambda url, **kw: None)
+    monkeypatch.setattr(web.jobs, "rescrape_due", lambda store, **kw: [])
     client = TestClient(web.app)
     snap = {"key": "luma:abc", "name": "Dinner", "start": "2026-10-20T01:00:00+00:00", "url": "https://luma.com/abc", "score": 50, "score_reasons": [], "tags": [], "topics": [], "also": [], "format": "social", "source": "luma"}
 
@@ -155,7 +156,26 @@ def test_saved_events_roundtrip(tmp_path, monkeypatch):
     assert len(saved) == 1 and saved[0]["name"] == "Dinner" and saved[0]["saved_at"]
     # not in any source, so the events payload carries it as a stale snapshot
     body = client.get("/api/events?days=7").json()
-    assert [e["key"] for e in body["saved_extra"]] == ["luma:abc"] and body["saved_extra"][0]["stale"] is True
+    assert [e["key"] for e in body["extra"]] == ["luma:abc"] and body["extra"][0]["stale"] is True
     assert client.delete("/api/saved/luma:abc").status_code == 200
     assert client.delete("/api/saved/luma:abc").status_code == 404
-    assert client.get("/api/events?days=7").json()["saved_extra"] == []
+    assert client.get("/api/events?days=7").json()["extra"] == []
+
+
+def test_past_event_with_guest_list_rides_along(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from sf_events import resolve, web
+    from sf_events.models import Event
+    from sf_events.store import Store
+    web.store = Store(tmp_path / "t.db")
+    monkeypatch.setattr(resolve, "resolve", lambda url, **kw: None)
+    past = Event(id="partiful:old", source="scraped", name="Infra for Intelligence", start=datetime.now(timezone.utc) - timedelta(days=9), end=None,
+                 url="https://partiful.com/e/old", location="San Francisco, CA", venue=None, summary=None, kind=None, image_url=None)
+    web.store.add("scraped", [past])
+    monkeypatch.setattr(web.jobs, "rescrape_due", lambda store, **kw: [])
+    client = TestClient(web.app)
+    client.post("/api/guests", json={"page_url": "https://partiful.com/e/old", "guests": GUESTS})
+    body = client.get("/api/events?days=7").json()
+    assert body["events"] == [] and body["orphan_guest_lists"] == []
+    (row,) = body["extra"]
+    assert row["key"] == "partiful:old" and row["past"] is True and row["guests"]["counts"]["founder"] == 2
