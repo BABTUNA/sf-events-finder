@@ -68,7 +68,19 @@ def api_events(days: int | None = Query(default=None, ge=1)):
     events.sort(key=lambda e: (e.start, e.name))
     guests = store.all_guest_analyses()
     keys = {dedupe_key(e) for e in events}
+    saved = store.saved()
+    rows = [_with_guests(e, guests.get(dedupe_key(e))) for e in events]
+    for r in rows:
+        r["saved"] = r["key"] in saved
+    # saved events outside this window ride along as snapshots so the saved view is complete
+    extra = []
+    for k, sv in saved.items():
+        if k not in keys:
+            snap = dict(sv["event"], saved=True, stale=True)
+            snap["guests"] = None
+            extra.append(snap)
     return {
+        "saved_extra": extra,
         "sources": jobs.status(store),
         "lookup": {"enabled": config.lookup_enabled(), "people": store.people_count(), "pending_lists": len(lookup.lists_with_work(store)) if config.lookup_enabled() else 0},
         # scraped lists whose event is not in this window, so they are not lost
@@ -79,7 +91,7 @@ def api_events(days: int | None = Query(default=None, ge=1)):
         "formats": FORMATS,
         # rule topics first, then whatever tags the sources added
         "topics": TOPICS + sorted({t for e in events for t in e.topics} - set(TOPICS)),
-        "events": [_with_guests(e, guests.get(dedupe_key(e))) for e in events],
+        "events": rows,
     }
 
 
@@ -176,6 +188,29 @@ def api_rescrape(source: str):
     if not run["ok"]:
         raise HTTPException(502, run["error"])
     return run
+
+
+class SaveBody(BaseModel):
+    # the row as the ui has it, kept as a snapshot
+    event: dict
+
+
+@app.get("/api/saved")
+def api_saved():
+    return [dict(v["event"], saved_at=v["saved_at"]) for v in store.saved().values()]
+
+
+@app.put("/api/saved/{key:path}")
+def api_save(key: str, body: SaveBody):
+    store.save(key, body.event)
+    return {"key": key, "saved": True}
+
+
+@app.delete("/api/saved/{key:path}")
+def api_unsave(key: str):
+    if not store.unsave(key):
+        raise HTTPException(404, "not saved")
+    return {"key": key, "saved": False}
 
 
 @app.get("/")

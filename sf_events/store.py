@@ -36,6 +36,11 @@ create table if not exists runs (
     error text
 );
 create index if not exists runs_source on runs(source, id);
+create table if not exists saved (
+    key text primary key,
+    saved_at text not null,
+    event text not null
+);
 create table if not exists people (
     key text primary key,
     data text not null,
@@ -139,6 +144,26 @@ class Store:
         with self._conn() as c:
             rows = c.execute("select * from guest_lists").fetchall()
         return {r["key"]: self._guest_row(r) for r in rows}
+
+    # saved events, keyed like dedupe so they follow the event across sources.
+    # the snapshot keeps the row showable after the event leaves the feed
+
+    def save(self, key: str, event: dict) -> None:
+        with self._conn() as c:
+            c.execute(
+                "insert into saved (key, saved_at, event) values (?, ?, ?) on conflict(key) do update set event = excluded.event",
+                (key, _now(), json.dumps(event)),
+            )
+
+    def unsave(self, key: str) -> bool:
+        with self._conn() as c:
+            return c.execute("delete from saved where key = ?", (key,)).rowcount > 0
+
+    def saved(self) -> dict[str, dict]:
+        """key -> {saved_at, event}"""
+        with self._conn() as c:
+            rows = c.execute("select * from saved order by saved_at").fetchall()
+        return {r["key"]: {"saved_at": r["saved_at"], "event": json.loads(r["event"])} for r in rows}
 
     # people, what a lookup found, keyed by their strongest anchor
 

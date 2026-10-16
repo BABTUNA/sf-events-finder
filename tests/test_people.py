@@ -140,3 +140,22 @@ def test_resolve_partiful_page_and_luma_slug():
     l = resolve.resolve("https://luma.com/5gm1z99p", client=client)
     assert l and l.source == "scraped" and l.url == "https://luma.com/5gm1z99p" and l.host == "TiDB" and l.summary
     assert resolve.resolve("https://www.eventbrite.com/e/x", client=client) is None
+
+
+def test_saved_events_roundtrip(tmp_path, monkeypatch):
+    from sf_events import resolve, web
+    from sf_events.store import Store
+    web.store = Store(tmp_path / "t.db")
+    monkeypatch.setattr(resolve, "resolve", lambda url, **kw: None)
+    client = TestClient(web.app)
+    snap = {"key": "luma:abc", "name": "Dinner", "start": "2026-10-20T01:00:00+00:00", "url": "https://luma.com/abc", "score": 50, "score_reasons": [], "tags": [], "topics": [], "also": [], "format": "social", "source": "luma"}
+
+    assert client.put("/api/saved/luma:abc", json={"event": snap}).json() == {"key": "luma:abc", "saved": True}
+    saved = client.get("/api/saved").json()
+    assert len(saved) == 1 and saved[0]["name"] == "Dinner" and saved[0]["saved_at"]
+    # not in any source, so the events payload carries it as a stale snapshot
+    body = client.get("/api/events?days=7").json()
+    assert [e["key"] for e in body["saved_extra"]] == ["luma:abc"] and body["saved_extra"][0]["stale"] is True
+    assert client.delete("/api/saved/luma:abc").status_code == 200
+    assert client.delete("/api/saved/luma:abc").status_code == 404
+    assert client.get("/api/events?days=7").json()["saved_extra"] == []

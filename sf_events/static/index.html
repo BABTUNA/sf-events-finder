@@ -152,6 +152,11 @@
   #srcfilter button.is-cv[aria-pressed="true"] { background: var(--cv); color: #fff; }
   .ev .host-name { color: var(--ink-3); }
   /* score: a number whose weight grows with it, reasons in plain words */
+  .star { border: 0; background: transparent; cursor: pointer; font-size: 15px; line-height: 1; color: var(--ink-3); padding: 0 2px; }
+  .star:hover { color: var(--bridge); }
+  .star.on { color: var(--bridge); }
+  .kind.stale { background: var(--fog-2); color: var(--ink-3); }
+  #worth button[data-worth="-2"][aria-pressed="true"] { background: var(--bridge); color: #fff; }
   .score { font: 600 12px/1 var(--mono); color: var(--ink-3); min-width: 24px; text-align: right; }
   .score.mid { color: var(--ink-2); }
   .score.high { color: var(--bridge); }
@@ -278,6 +283,7 @@
       <button data-worth="0" aria-pressed="true">all</button>
       <button data-worth="40" aria-pressed="false">worth it</button>
       <button data-worth="-1" aria-pressed="false" title="only events with a scraped guest list">scraped</button>
+      <button data-worth="-2" aria-pressed="false" title="events you starred, any date">saved</button>
     </div>
     <div class="seg" id="range" role="group" aria-label="How far ahead">
       <button data-days="7" aria-pressed="true">7d</button>
@@ -302,7 +308,7 @@
 <script>
 (() => {
   const TZ = "America/Los_Angeles";
-  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, moreTopics: false, events: [], sources: [], orphans: [] };
+  const state = { days: 7, src: "", format: "", topics: new Set(), q: "", sort: "time", worth: 0, moreTopics: false, events: [], savedExtra: [], sources: [], orphans: [] };
   const $ = (s) => document.querySelector(s);
   let FORMATS = [], TOPICS = [];
   const PILL = {
@@ -329,6 +335,7 @@
       const body = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(body.detail || `${r.status} ${r.statusText}`);
       state.events = body.events;
+      state.savedExtra = body.saved_extra || [];
       state.sources = body.sources;
       state.orphans = body.orphan_guest_lists || [];
       FORMATS = body.formats; TOPICS = body.topics;
@@ -342,12 +349,15 @@
 
   function visible() {
     const today = todayYmd();
-    const end = state.days ? addDays(today, state.days) : null;
+    const savedView = state.worth === -2;
+    const end = state.days && !savedView ? addDays(today, state.days) : null;
     const q = state.q.trim().toLowerCase();
-    return state.events.filter((e) => {
+    const pool = savedView ? [...state.events, ...state.savedExtra] : state.events;
+    return pool.filter((e) => {
       const d = ymd(e.start);
       if (end && d >= end) return false;
       if (state.worth === -1 && !e.guests) return false;
+      if (state.worth === -2 && !e.saved) return false;
       if (state.worth > 0 && e.score < state.worth) return false;
       if (state.src && e.source !== state.src && !e.also.includes(state.src)) return false;
       if (state.format && e.format !== state.format) return false;
@@ -442,8 +452,8 @@
           const srcs = [e.source, ...e.also];
           return `<a class="ev ${live ? "live" : ""} src-${e.source}" href="${e.url}" target="_blank" rel="noopener">
             <span class="t">${state.sort === "score" ? `<span class="tday">${fmt(e.start, { weekday: "short", day: "numeric" })}</span>` : ""}${fmt(e.start, { hour: "numeric", minute: "2-digit" })}${live ? '<span class="live-dot">LIVE</span>' : ""}</span>
-            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}</span>
-            <span class="host"><span class="pills"><span class="score ${e.score >= 40 ? "high" : e.score >= 20 ? "mid" : ""}" title="how worth it this looks, 0 to 100">${e.score}</span>${srcs.map((s) => `<span class="pill ${PILL[s]?.cls || "cv"}" title="Listed by ${PILL[s]?.name || s}">${PILL[s]?.label || s}</span>`).join("")}</span><span class="dom">${esc(host(e.url))}</span></span>
+            <span class="name">${esc(e.name)}${e.kind ? `<span class="kind">${esc(e.kind)}</span>` : ""}${e.stale ? `<span class="kind stale" title="no longer in any source, this is the row as it was when saved">saved copy</span>` : ""}</span>
+            <span class="host"><span class="pills"><button class="star ${e.saved ? "on" : ""}" data-save="${esc(e.key)}" title="${e.saved ? "Saved, click to remove" : "Save this event"}" aria-pressed="${!!e.saved}">${e.saved ? "★" : "☆"}</button><span class="score ${e.score >= 40 ? "high" : e.score >= 20 ? "mid" : ""}" title="how worth it this looks, 0 to 100">${e.score}</span>${srcs.map((s) => `<span class="pill ${PILL[s]?.cls || "cv"}" title="Listed by ${PILL[s]?.name || s}">${PILL[s]?.label || s}</span>`).join("")}</span><span class="dom">${esc(host(e.url))}</span></span>
             <span class="sub"><span class="where">${esc(e.where || "")}${e.host ? `<span class="host-name"> · ${esc(e.host)}</span>` : ""}</span>${e.summary ? `<span class="sum" title="${esc(e.summary)}">${esc(e.summary)}</span>` : ""}
               <span class="tags">${[e.format === "other" ? "" : e.format, ...e.topics].filter(Boolean).map((t) => `<span>#${esc(t)}</span>`).join("")}</span>
               ${e.score_reasons.length ? `<span class="why"><b>${e.score}</b> · ${esc(e.score_reasons.join(", "))}</span>` : ""}
@@ -453,7 +463,7 @@
       </section>`;
     }).join("") || `<div class="empty"><b>Nothing here</b>Try a wider range, another format, or clear the search.</div>`;
 
-    const span2 = state.days ? `next ${state.days} days` : "everything upcoming";
+    const span2 = state.worth === -2 ? "saved, any date" : state.days ? `next ${state.days} days` : "everything upcoming";
     $("#orphans").innerHTML = state.orphans.length
       ? `<div class="orphans">${state.orphans.length} scraped guest list${state.orphans.length > 1 ? "s" : ""} for events not in this window: ${state.orphans.map((o) => `<a href="${esc(o.event_url)}" target="_blank" rel="noopener">${esc(host(o.event_url))}/${esc(o.key.split(":")[1])}</a> (${esc(o.summary)})`).join(", ")}. Widen the range or they may have passed.</div>`
       : "";
@@ -553,6 +563,22 @@
       (rest.length ? `<div class="grp">${rest.length} more</div>` + rest.map(personRow).join("") : "") +
       (!rows.length ? `<div class="grp">nobody matches</div>` : "");
   }
+
+  // star: save or unsave without following the row link
+  $("#list").addEventListener("click", async (ev) => {
+    const b = ev.target.closest("button[data-save]"); if (!b) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const key = b.dataset.save;
+    const e = [...state.events, ...state.savedExtra].find((x) => x.key === key);
+    if (!e) return;
+    const r = e.saved
+      ? await fetch(`/api/saved/${encodeURIComponent(key)}`, { method: "DELETE" })
+      : await fetch(`/api/saved/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ event: e }) });
+    if (!r.ok) return;
+    e.saved = !e.saved;
+    if (!e.saved) state.savedExtra = state.savedExtra.filter((x) => x.key !== key);
+    render();
+  });
 
   // run one lookup pass for a list, then refetch it
   $("#list").addEventListener("click", async (ev) => {

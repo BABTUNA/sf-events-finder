@@ -102,6 +102,7 @@ def cmd_list(store: Store, argv: list[str]) -> int:
     p.add_argument("--source", choices=sorted(SOURCES), action="append", help="only events that source lists, repeatable")
     p.add_argument("--sort", choices=("time", "score"), default="time", help="order by start time (default) or by how worth it it looks")
     p.add_argument("--min-score", type=int, default=0, metavar="N", help="hide events scoring under N (0-100)")
+    p.add_argument("--saved", action="store_true", help="only events you starred in the ui, any date")
     p.add_argument("--stale", action="store_true", help="read what is stored even if a source is past its interval")
     p.add_argument("--json", action="store_true", help="print json instead of the table")
     p.add_argument("--out", help="also write json here")
@@ -114,8 +115,12 @@ def cmd_list(store: Store, argv: list[str]) -> int:
                 print(f"{run['source']}: {run['error']} (showing what was stored)", file=sys.stderr)
 
     start = datetime.now(PACIFIC).replace(hour=0, minute=0, second=0, microsecond=0)
-    end = None if args.all else start + timedelta(days=args.days)
-    events = dedupe([e for e in store.events() if e.start >= start and (end is None or e.start < end)])
+    end = None if args.all or args.saved else start + timedelta(days=args.days)
+    events = dedupe([e for e in store.events() if (args.saved or e.start >= start) and (end is None or e.start < end)])
+    if args.saved:
+        from sf_events.merge import dedupe_key
+        keep = set(store.saved())
+        events = [e for e in events if dedupe_key(e) in keep]
     if args.source:
         # after dedupe a merged event belongs to every source that listed it
         events = [e for e in events if e.source in args.source or set(e.also) & set(args.source)]

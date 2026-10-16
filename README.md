@@ -51,6 +51,10 @@ uv run sf-events --days 14 --sort score --min-score 40
 
 In the UI: sort by score, a "worth it" filter at 40, the number on every row and the reasons under it.
 
+## Saving events
+
+The star on every row saves the event to a `saved` table on the server, keyed like dedupe so it follows the event across sources. The `saved` button in the top bar shows only starred events, any date, and keeps showing a saved copy after the event leaves every source. `sf-events --saved` lists the same set. `GET /api/saved`, `PUT` and `DELETE /api/saved/{key}` behind it.
+
 ## Guest lists and who is in the room
 
 Guest lists on Partiful and Luma are only visible logged in, so they come from a small Chrome extension in [extension/](extension/) rather than the scraper. Load it unpacked (`chrome://extensions`, Developer mode, Load unpacked, pick the `extension` folder). On any Partiful or Luma event page, open the guest list and click the `guests → sf-events` button in the corner. It scrolls the list until it stops growing, extracts name, bio and links per guest, and posts them to `POST /api/guests` on the local server.
